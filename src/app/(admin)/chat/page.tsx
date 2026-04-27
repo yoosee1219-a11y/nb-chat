@@ -1,86 +1,264 @@
-import { MessageCircle, Languages, Shield } from "lucide-react";
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { MessageCircle, PanelRightOpen, PanelRightClose, UserPlus } from "lucide-react";
+import { prisma } from "@/lib/prisma";
+import { getSession } from "@/lib/auth";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  CONSULTATION_STATUS,
+  LANGUAGE,
+  NATIONALITY,
+  type ConsultationStatus,
+} from "@/lib/constants";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { RoomList } from "./room-list";
+import { MessagePanel } from "./message-panel";
+import { MessageInput } from "./message-input";
+import { ApplicantSidePanel } from "./applicant-side-panel";
+import { MarkReadEffect } from "./mark-read-effect";
+import { assignRoomToMe } from "./actions";
 
-export default function ChatPlaceholder() {
+const ROOM_LIST_LIMIT = 100;
+
+export default async function ChatPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ roomId?: string; panel?: string }>;
+}) {
+  const session = await getSession();
+  if (!session) redirect("/login");
+
+  const { roomId: roomIdParam, panel } = await searchParams;
+  const sidePanelOpen = panel !== "off";
+
+  // ───── 좌측: 룸 리스트 ─────
+  const rawRooms = await prisma.chatRoom.findMany({
+    take: ROOM_LIST_LIMIT,
+    orderBy: [
+      { isFavorite: "desc" },
+      { lastMessageAt: { sort: "desc", nulls: "last" } },
+    ],
+    include: {
+      applicant: {
+        select: {
+          id: true,
+          name: true,
+          nationality: true,
+          preferredLanguage: true,
+          status: true,
+        },
+      },
+      messages: {
+        take: 1,
+        orderBy: { createdAt: "desc" },
+        select: {
+          senderType: true,
+          originalText: true,
+          translatedText: true,
+        },
+      },
+    },
+  });
+
+  const roomItems = rawRooms.map((r) => {
+    const last = r.messages[0];
+    // 매니저 시점 한국어 미리보기:
+    //  - 매니저 메시지: originalText (KO)
+    //  - 신청자 메시지: translatedText (KO) → 없으면 originalText
+    //  - SYSTEM: originalText
+    const preview = last
+      ? last.senderType === "MANAGER"
+        ? last.originalText
+        : last.translatedText ?? last.originalText
+      : null;
+
+    return {
+      id: r.id,
+      isFavorite: r.isFavorite,
+      unreadCount: r.unreadCount,
+      lastMessageAt: r.lastMessageAt,
+      managerId: r.managerId,
+      applicant: r.applicant,
+      lastPreview: preview,
+    };
+  });
+
+  // ───── 중앙/우측: 선택된 룸 ─────
+  const selectedRoomId =
+    roomIdParam ?? roomItems[0]?.id ?? null;
+
+  const selectedRoom = selectedRoomId
+    ? await prisma.chatRoom.findUnique({
+        where: { id: selectedRoomId },
+        include: {
+          applicant: { include: { appliedPlan: true } },
+          messages: { orderBy: { createdAt: "asc" } },
+        },
+      })
+    : null;
+
+  // ───── 렌더 ─────
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold">채팅</h2>
-        <p className="text-sm text-muted-foreground">
-          신청자와 채팅으로 소통합니다 · 자동번역 지원
-        </p>
+    <div className="-m-6 flex h-[calc(100vh-3.5rem)] flex-1">
+      {/* 좌측: 룸 리스트 */}
+      <div className="w-80 shrink-0">
+        <RoomList
+          rooms={roomItems}
+          selectedRoomId={selectedRoomId}
+          currentManagerId={session.managerId}
+        />
       </div>
 
-      <Card className="border-dashed">
-        <CardHeader>
-          <Badge variant="secondary" className="w-fit">
-            Week 3-4 구현 예정
-          </Badge>
-          <CardTitle className="flex items-center gap-2">
-            <MessageCircle className="h-5 w-5" />
-            자동번역 채팅 시스템
-          </CardTitle>
-          <CardDescription>
-            FICS 클론의 핵심 기능 — 곧 구현됩니다.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-3">
-            <Feature
-              icon={<Languages className="h-4 w-4" />}
-              title="양방향 자동번역"
-              desc="신청자 자국어 ↔ 한국어 실시간 번역 (Google Cloud Translation v3)"
-            />
-            <Feature
-              icon={<Shield className="h-4 w-4" />}
-              title="메시지 손실 0"
-              desc="Outbox 패턴 + Socket.IO ack + 클라이언트 재전송 큐"
-            />
-            <Feature
-              icon={<MessageCircle className="h-4 w-4" />}
-              title="풀 메시지 타입"
-              desc="텍스트, 이미지, 파일, 음성, 카드(이력서/주거/요금제)"
-            />
-          </div>
+      {/* 중앙: 메시지 영역 */}
+      <div className="flex min-w-0 flex-1 flex-col bg-muted/20">
+        {selectedRoom ? (
+          <SelectedRoomView
+            session={session}
+            sidePanelOpen={sidePanelOpen}
+            selectedRoomId={selectedRoom.id}
+            unreadCount={selectedRoom.unreadCount}
+            isAssignedToMe={selectedRoom.managerId === session.managerId}
+            isUnassigned={selectedRoom.managerId === null}
+            applicant={selectedRoom.applicant}
+            messages={selectedRoom.messages}
+          />
+        ) : (
+          <EmptyState />
+        )}
+      </div>
 
-          <div className="rounded-md bg-muted/50 p-4 text-sm">
-            <p className="font-medium mb-2">계획된 기술 스택:</p>
-            <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-              <li>Socket.IO + Redis Pub/Sub (멀티 인스턴스)</li>
-              <li>BullMQ Outbox 워커 (트랜잭션 안전 broadcast)</li>
-              <li>Google Cloud Translation v3 + Redis 30일 캐시</li>
-              <li>클라이언트 IndexedDB 재전송 큐</li>
-            </ul>
-          </div>
-        </CardContent>
-      </Card>
+      {/* 우측: 사이드 패널 */}
+      {sidePanelOpen && selectedRoom && (
+        <div className="hidden w-80 shrink-0 lg:block">
+          <ApplicantSidePanel
+            applicant={selectedRoom.applicant}
+            appliedPlan={selectedRoom.applicant.appliedPlan}
+            roomId={selectedRoom.id}
+          />
+        </div>
+      )}
     </div>
   );
 }
 
-function Feature({
-  icon,
-  title,
-  desc,
+function SelectedRoomView({
+  session,
+  sidePanelOpen,
+  selectedRoomId,
+  unreadCount,
+  isAssignedToMe,
+  isUnassigned,
+  applicant,
+  messages,
 }: {
-  icon: React.ReactNode;
-  title: string;
-  desc: string;
+  session: { managerId: string };
+  sidePanelOpen: boolean;
+  selectedRoomId: string;
+  unreadCount: number;
+  isAssignedToMe: boolean;
+  isUnassigned: boolean;
+  applicant: {
+    id: string;
+    name: string;
+    nationality: string;
+    preferredLanguage: string;
+    status: string;
+  };
+  messages: Array<{
+    id: string;
+    senderType: string;
+    type: string;
+    originalText: string | null;
+    language: string | null;
+    translatedText: string | null;
+    createdAt: Date;
+  }>;
 }) {
+  const nat = NATIONALITY[applicant.nationality];
+  const lang = LANGUAGE[applicant.preferredLanguage];
+  const status =
+    CONSULTATION_STATUS[applicant.status as ConsultationStatus];
+
+  async function assign() {
+    "use server";
+    await assignRoomToMe(selectedRoomId);
+  }
+
   return (
-    <div className="rounded-md border p-3">
-      <div className="flex items-center gap-2 text-sm font-medium">
-        {icon}
-        {title}
+    <>
+      <MarkReadEffect roomId={selectedRoomId} unreadCount={unreadCount} />
+
+      {/* 헤더 */}
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b bg-background px-4">
+        <span className="text-lg">{nat?.flag}</span>
+        <div className="min-w-0">
+          <h2 className="truncate text-sm font-semibold">{applicant.name}</h2>
+          <p className="truncate text-xs text-muted-foreground">
+            {nat?.label} · {lang?.label}
+            {status && (
+              <Badge
+                variant="outline"
+                className={`${status.className} ml-2 h-4 px-1.5 text-[10px]`}
+              >
+                {status.label}
+              </Badge>
+            )}
+          </p>
+        </div>
+
+        <div className="ml-auto flex items-center gap-2">
+          {isUnassigned && (
+            <form action={assign}>
+              <Button type="submit" size="sm" variant="outline">
+                <UserPlus className="mr-1.5 h-3.5 w-3.5" />
+                내가 담당
+              </Button>
+            </form>
+          )}
+          {isAssignedToMe && (
+            <Badge variant="secondary" className="h-6 text-xs">
+              내 담당
+            </Badge>
+          )}
+          <Button variant="ghost" size="icon" asChild title="사이드 패널 토글">
+            <Link
+              href={{
+                pathname: "/chat",
+                query: {
+                  roomId: selectedRoomId,
+                  ...(sidePanelOpen ? { panel: "off" } : {}),
+                },
+              }}
+            >
+              {sidePanelOpen ? (
+                <PanelRightClose className="h-4 w-4" />
+              ) : (
+                <PanelRightOpen className="h-4 w-4" />
+              )}
+            </Link>
+          </Button>
+        </div>
+      </header>
+
+      {/* 메시지 패널 */}
+      <div className="min-h-0 flex-1">
+        <MessagePanel messages={messages} applicantName={applicant.name} />
       </div>
-      <p className="mt-1.5 text-xs text-muted-foreground">{desc}</p>
+
+      {/* 입력창 */}
+      <MessageInput applicantLanguageLabel={lang?.label ?? "신청자 언어"} />
+    </>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 text-center text-muted-foreground">
+      <MessageCircle className="h-12 w-12 opacity-30" />
+      <div>
+        <p className="text-sm font-medium">채팅방을 선택하세요</p>
+        <p className="mt-1 text-xs">왼쪽 목록에서 신청자와의 대화를 선택할 수 있습니다.</p>
+      </div>
     </div>
   );
 }

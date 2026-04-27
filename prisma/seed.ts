@@ -163,6 +163,8 @@ async function main() {
     },
   ];
 
+  const seededApplicants: Array<{ id: string; lang: string; status: string }> =
+    [];
   for (const a of applicantSeeds) {
     const applicant = await prisma.applicant.upsert({
       where: { id: `seed-${a.name.replace(/\s+/g, "-")}` },
@@ -186,8 +188,246 @@ async function main() {
         unreadCount: a.status === "PENDING" ? 1 : 0,
       },
     });
+
+    seededApplicants.push({
+      id: applicant.id,
+      lang: a.preferredLanguage,
+      status: a.status,
+    });
   }
   console.log(`  ✓ 신청자 ${applicantSeeds.length}명 + 채팅방 생성`);
+
+  // ========================================
+  // 메시지 시드 — 자동번역 패턴 시연용
+  // (originalText + language + translatedText 3-필드 패턴 모두 채움)
+  // 매니저 메시지: lang=KO_KR, originalText=한국어, translatedText=신청자 언어
+  // 신청자 메시지: lang=신청자언어, originalText=원어, translatedText=한국어
+  // ========================================
+  type Msg = {
+    sender: "APPLICANT" | "MANAGER" | "SYSTEM";
+    type: string;
+    original?: string;
+    translated?: string;
+    lang?: string; // 메시지의 originalText 언어
+    minutesAgo: number;
+  };
+
+  const conversations: Record<string, Msg[]> = {
+    // Ivan (RU, PENDING) — 첫 인사만, 매니저 미응답
+    "seed-Ivan-Petrov": [
+      {
+        sender: "SYSTEM",
+        type: "SYSTEM",
+        original: "신청자가 채팅방에 참여했습니다.",
+        lang: "KO_KR",
+        minutesAgo: 35,
+      },
+      {
+        sender: "APPLICANT",
+        type: "TEXT",
+        original: "Здравствуйте! Я хочу подключить тариф.",
+        translated: "안녕하세요! 요금제 가입하고 싶어요.",
+        lang: "RU_RU",
+        minutesAgo: 30,
+      },
+    ],
+
+    // Nguyen (VN, IN_PROGRESS) — 양방향 활발한 대화
+    "seed-Nguyen-Van-A": [
+      {
+        sender: "SYSTEM",
+        type: "SYSTEM",
+        original: "신청자가 채팅방에 참여했습니다.",
+        lang: "KO_KR",
+        minutesAgo: 180,
+      },
+      {
+        sender: "APPLICANT",
+        type: "TEXT",
+        original: "Xin chào, tôi cần đăng ký SIM mới.",
+        translated: "안녕하세요, 새 유심 등록이 필요합니다.",
+        lang: "VI_VN",
+        minutesAgo: 175,
+      },
+      {
+        sender: "MANAGER",
+        type: "TEXT",
+        original: "안녕하세요. 비자 종류를 알려주실 수 있나요?",
+        translated: "Xin chào. Anh có thể cho biết loại visa không?",
+        lang: "KO_KR",
+        minutesAgo: 170,
+      },
+      {
+        sender: "APPLICANT",
+        type: "TEXT",
+        original: "Tôi có visa E-9.",
+        translated: "저는 E-9 비자가 있어요.",
+        lang: "VI_VN",
+        minutesAgo: 160,
+      },
+      {
+        sender: "MANAGER",
+        type: "TEXT",
+        original:
+          "5G 라이트 요금제(33,000원/월) 가입 도와드리겠습니다. 외국인 등록증 사진 보내주세요.",
+        translated:
+          "Tôi sẽ giúp anh đăng ký gói 5G Lite (33.000 KRW/tháng). Vui lòng gửi ảnh thẻ đăng ký người nước ngoài.",
+        lang: "KO_KR",
+        minutesAgo: 90,
+      },
+      {
+        sender: "APPLICANT",
+        type: "TEXT",
+        original: "Vâng, tôi sẽ gửi ngay.",
+        translated: "네, 지금 바로 보낼게요.",
+        lang: "VI_VN",
+        minutesAgo: 60,
+      },
+    ],
+
+    // Battulga (MN, PENDING) — 미응답 1건
+    "seed-Battulga-Erdene": [
+      {
+        sender: "SYSTEM",
+        type: "SYSTEM",
+        original: "신청자가 채팅방에 참여했습니다.",
+        lang: "KO_KR",
+        minutesAgo: 12,
+      },
+      {
+        sender: "APPLICANT",
+        type: "TEXT",
+        original: "Сайн байна уу, тариф сонгоход тусална уу.",
+        translated: "안녕하세요, 요금제 선택 도와주세요.",
+        lang: "MN_MN",
+        minutesAgo: 10,
+      },
+    ],
+
+    // Aung Min (MM, CONFIRMED) — 가입 확정 흐름
+    "seed-Aung-Min": [
+      {
+        sender: "SYSTEM",
+        type: "SYSTEM",
+        original: "신청자가 채팅방에 참여했습니다.",
+        lang: "KO_KR",
+        minutesAgo: 1440,
+      },
+      {
+        sender: "APPLICANT",
+        type: "TEXT",
+        original: "မင်္ဂလာပါ၊ ဖုန်းအသစ်ဝယ်ချင်ပါတယ်။",
+        translated: "안녕하세요, 새 휴대폰 가입하고 싶어요.",
+        lang: "MY_MM",
+        minutesAgo: 1435,
+      },
+      {
+        sender: "MANAGER",
+        type: "TEXT",
+        original: "5G 스탠다드 요금제 추천드립니다. 진행해드릴까요?",
+        translated:
+          "ကျွန်တော် 5G Standard ပလန်ကို အကြံပြုပါတယ်။ ဆက်လုပ်ပေးရမလား?",
+        lang: "KO_KR",
+        minutesAgo: 1400,
+      },
+      {
+        sender: "APPLICANT",
+        type: "TEXT",
+        original: "ဟုတ်ကဲ့ ကျေးဇူးပါ။",
+        translated: "네 감사합니다.",
+        lang: "MY_MM",
+        minutesAgo: 1390,
+      },
+      {
+        sender: "MANAGER",
+        type: "TEXT",
+        original: "가입 완료되었습니다. 유심은 내일 발송됩니다.",
+        translated:
+          "မှတ်ပုံတင်ပြီးပါပြီ။ SIM ကို မနက်ဖြန်ပို့ပေးပါမယ်။",
+        lang: "KO_KR",
+        minutesAgo: 60,
+      },
+    ],
+
+    // Bipin (NP, UNCONFIRMED) — 매니저 응답 후 신청자 무응답
+    "seed-Bipin-Sharma": [
+      {
+        sender: "SYSTEM",
+        type: "SYSTEM",
+        original: "신청자가 채팅방에 참여했습니다.",
+        lang: "KO_KR",
+        minutesAgo: 4320,
+      },
+      {
+        sender: "APPLICANT",
+        type: "TEXT",
+        original: "नमस्ते, सिम कार्ड चाहिए।",
+        translated: "안녕하세요, 유심 카드 필요해요.",
+        lang: "NE_NP",
+        minutesAgo: 4300,
+      },
+      {
+        sender: "MANAGER",
+        type: "TEXT",
+        original: "외국인 등록증 사본 부탁드립니다.",
+        translated: "कृपया विदेशी दर्ता प्रमाणपत्रको प्रति पठाउनुहोस्।",
+        lang: "KO_KR",
+        minutesAgo: 4200,
+      },
+    ],
+  };
+
+  // 기존 메시지 정리 (멱등성을 위해)
+  const seedRoomIds = seededApplicants.map((a) => `seed-room-${a.id}`);
+  await prisma.message.deleteMany({
+    where: { roomId: { in: seedRoomIds } },
+  });
+
+  let totalMsgs = 0;
+  for (const sa of seededApplicants) {
+    const roomId = `seed-room-${sa.id}`;
+    const msgs = conversations[sa.id] ?? [];
+    let lastAt: Date | null = null;
+
+    for (const m of msgs) {
+      const createdAt = new Date(Date.now() - m.minutesAgo * 60_000);
+      lastAt = createdAt;
+
+      await prisma.message.create({
+        data: {
+          roomId,
+          senderType: m.sender,
+          senderId:
+            m.sender === "APPLICANT"
+              ? sa.id
+              : m.sender === "MANAGER"
+              ? m1.id
+              : null,
+          type: m.type,
+          originalText: m.original ?? null,
+          language: m.lang ?? null,
+          translatedText: m.translated ?? null,
+          isRead: m.sender !== "APPLICANT" || sa.status !== "PENDING",
+        },
+      });
+      totalMsgs++;
+    }
+
+    if (lastAt) {
+      // 마지막 메시지 시각 + 미읽음 카운트 동기화
+      const unread = msgs.filter(
+        (m) => m.sender === "APPLICANT" && sa.status === "PENDING"
+      ).length;
+      await prisma.chatRoom.update({
+        where: { id: roomId },
+        data: {
+          lastMessageAt: lastAt,
+          unreadCount: unread,
+        },
+      });
+    }
+  }
+  console.log(`  ✓ 메시지 ${totalMsgs}건 생성 (자동번역 패턴 포함)`);
 
   console.log("");
   console.log("✅ 시드 완료\n");
