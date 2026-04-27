@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ApplicantSearchBar } from "./search-bar";
+import { PageHeader } from "../_components/page-header";
 
 const PAGE_SIZE = 30;
 
@@ -57,16 +58,17 @@ export default async function ApplicantsPage({
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">신청자 관리</h2>
-          <p className="text-sm text-muted-foreground">
-            총 {total.toLocaleString()}명
-          </p>
-        </div>
-      </div>
+    <div>
+      <PageHeader
+        title="신청자 관리"
+        description={`총 ${total.toLocaleString()}명`}
+        breadcrumbs={[
+          { label: "홈", href: "/dashboard" },
+          { label: "신청자 관리" },
+        ]}
+      />
 
+      <div className="space-y-6">
       <ApplicantSearchBar />
 
       <Card>
@@ -203,6 +205,7 @@ export default async function ApplicantsPage({
           )}
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

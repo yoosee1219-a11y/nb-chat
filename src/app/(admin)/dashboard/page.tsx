@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { NATIONALITY, type ConsultationStatus } from "@/lib/constants";
+import { PageHeader } from "../_components/page-header";
 import { StatusDonut } from "./status-donut";
 
 export default async function DashboardPage() {
@@ -94,16 +95,14 @@ export default async function DashboardPage() {
   ];
 
   return (
-    <div className="space-y-6">
-      {/* 페이지 헤더 — 브레드크럼 + 제목 + 부제 */}
-      <div>
-        <p className="text-xs text-muted-foreground">홈 · 대시보드</p>
-        <h2 className="mt-1 text-2xl font-bold">대시보드</h2>
-        <p className="text-sm text-muted-foreground">
-          외국인 통신사 가입 상담 현황을 한눈에 확인하세요
-        </p>
-      </div>
+    <div>
+      <PageHeader
+        title="대시보드"
+        description="외국인 통신사 가입 상담 현황을 한눈에 확인하세요"
+        breadcrumbs={[{ label: "홈", href: "/dashboard" }, { label: "대시보드" }]}
+      />
 
+      <div className="space-y-6">
       {/* KPI 카드 — 5열 */}
       <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
         {stats.map((s) => (
@@ -162,6 +161,7 @@ export default async function DashboardPage() {
             )}
           </CardContent>
         </Card>
+      </div>
       </div>
     </div>
   );

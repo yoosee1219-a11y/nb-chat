@@ -34,6 +34,7 @@ import { Separator } from "@/components/ui/separator";
 import { StatusChange } from "./status-change";
 import { NoteForm } from "./note-form";
 import { NoteItem } from "./note-item";
+import { PageHeader } from "../../_components/page-header";
 
 export default async function ApplicantDetailPage({
   params,
@@ -74,41 +75,37 @@ export default async function ApplicantDetailPage({
   const room = applicant.rooms[0];
 
   return (
-    <div className="space-y-6">
-      {/* 상단 */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/applicants">
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
-          <div>
-            <h2 className="text-2xl font-bold">{applicant.name}</h2>
-            <p className="text-sm text-muted-foreground">
-              신청 ID:{" "}
-              <code className="rounded bg-muted px-1 py-0.5 text-xs">
-                {applicant.id}
-              </code>
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <StatusChange
-            applicantId={applicant.id}
-            currentStatus={applicant.status}
-          />
-          {room && (
-            <Button asChild>
-              <Link href={`/chat?roomId=${room.id}`}>
-                <MessageCircle className="mr-2 h-4 w-4" />
-                채팅 열기
+    <div>
+      <PageHeader
+        title={applicant.name}
+        description={`신청 ID: ${applicant.id}`}
+        breadcrumbs={[
+          { label: "홈", href: "/dashboard" },
+          { label: "신청자 관리", href: "/applicants" },
+          { label: applicant.name },
+        ]}
+        actions={
+          <>
+            <Button variant="ghost" size="icon" asChild title="목록으로">
+              <Link href="/applicants">
+                <ArrowLeft className="h-4 w-4" />
               </Link>
             </Button>
-          )}
-        </div>
-      </div>
+            <StatusChange
+              applicantId={applicant.id}
+              currentStatus={applicant.status}
+            />
+            {room && (
+              <Button asChild>
+                <Link href={`/chat?roomId=${room.id}`}>
+                  <MessageCircle className="mr-2 h-4 w-4" />
+                  채팅 열기
+                </Link>
+              </Button>
+            )}
+          </>
+        }
+      />
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* 좌: 기본 정보 */}

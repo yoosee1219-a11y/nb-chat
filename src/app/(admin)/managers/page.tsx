@@ -23,6 +23,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ManagerForm } from "./manager-form";
 import { DeactivateManagerButton } from "./deactivate-button";
+import { PageHeader } from "../_components/page-header";
 
 export default async function ManagersPage() {
   const session = await requireSession();
@@ -49,17 +50,16 @@ export default async function ManagersPage() {
   });
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">매니저 관리</h2>
-          <p className="text-sm text-muted-foreground">
-            상담사 계정 · 전체 {managers.length}명 (활성{" "}
-            {managers.filter((m) => m.isActive).length})
-          </p>
-        </div>
-        <ManagerForm />
-      </div>
+    <div>
+      <PageHeader
+        title="매니저 관리"
+        description={`상담사 계정 · 전체 ${managers.length}명 (활성 ${managers.filter((m) => m.isActive).length})`}
+        breadcrumbs={[
+          { label: "홈", href: "/dashboard" },
+          { label: "매니저 관리" },
+        ]}
+        actions={<ManagerForm />}
+      />
 
       <Card>
         <CardHeader>

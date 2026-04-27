@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Users,
-  FileText,
+  Wifi,
   MessageCircle,
   Bot,
   UserCog,
@@ -28,7 +28,7 @@ const NAV = [
     label: "운영",
     items: [
       { href: "/applicants", label: "신청자 관리", icon: Users },
-      { href: "/plans", label: "요금제 관리", icon: FileText },
+      { href: "/plans", label: "요금제 관리", icon: Wifi },
       { href: "/chat", label: "채팅", icon: MessageCircle },
       { href: "/chatbot-flow", label: "챗봇 플로우", icon: Bot },
     ],

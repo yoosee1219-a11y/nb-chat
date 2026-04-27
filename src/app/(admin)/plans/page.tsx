@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { PlanForm } from "./plan-form";
 import { DeletePlanButton } from "./delete-button";
+import { PageHeader } from "../_components/page-header";
 
 export default async function PlansPage() {
   const plans = await prisma.plan.findMany({
@@ -26,16 +27,16 @@ export default async function PlansPage() {
   const active = plans.filter((p) => p.isActive).length;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">요금제 관리</h2>
-          <p className="text-sm text-muted-foreground">
-            통신사 요금제를 관리합니다 · 전체 {total}개 (활성 {active})
-          </p>
-        </div>
-        <PlanForm />
-      </div>
+    <div>
+      <PageHeader
+        title="요금제 관리"
+        description={`전체 ${total}개 (활성 ${active})`}
+        breadcrumbs={[
+          { label: "홈", href: "/dashboard" },
+          { label: "요금제 관리" },
+        ]}
+        actions={<PlanForm />}
+      />
 
       <Card>
         <CardHeader>
