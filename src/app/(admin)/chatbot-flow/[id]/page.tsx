@@ -29,7 +29,25 @@ export default async function FlowEditPage({
   const flow = await prisma.chatbotFlow.findUnique({ where: { id } });
   if (!flow) notFound();
 
-  const nodes = JSON.parse(flow.nodesData) as Node<AnyNodeData>[];
+  const rawNodes = JSON.parse(flow.nodesData) as Node<AnyNodeData>[];
+  // 옛 스키마 호환 — 시작 노드에 trigger 없으면 디폴트 채움
+  const nodes: Node<AnyNodeData>[] = rawNodes.map((n) => {
+    if (n.type === "start") {
+      const d = n.data as { kind: "start"; label?: string; trigger?: string };
+      if (!d.trigger) {
+        return {
+          ...n,
+          data: {
+            kind: "start",
+            label: d.label ?? "시작",
+            trigger: "always",
+            triggerValue: "",
+          } as AnyNodeData,
+        };
+      }
+    }
+    return n;
+  });
   const edges = JSON.parse(flow.edgesData) as Edge[];
   const status = STATUS_BADGE[flow.status] ?? STATUS_BADGE.DRAFT;
 

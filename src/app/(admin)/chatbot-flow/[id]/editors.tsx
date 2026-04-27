@@ -28,6 +28,8 @@ import {
   NATIONALITY,
 } from "@/lib/constants";
 import type {
+  StartNodeData,
+  TriggerKind,
   MessageNodeData,
   ConditionNodeData,
   ConditionField,
@@ -42,6 +44,149 @@ type EditorProps<T> = {
   data: T;
   onChange: (next: T) => void;
 };
+
+// ─── Start (트리거 조건) ──────────────────────────
+const TRIGGER_OPTIONS: { key: TriggerKind; label: string; hint: string }[] = [
+  {
+    key: "always",
+    label: "모든 신청자",
+    hint: "채팅방에 들어오는 모든 신청자에게 적용",
+  },
+  {
+    key: "language_match",
+    label: "언어 일치",
+    hint: "신청자 모국어가 일치할 때만",
+  },
+  {
+    key: "status_match",
+    label: "상담 상태 일치",
+    hint: "신청자가 특정 상태일 때만 (예: PENDING)",
+  },
+  {
+    key: "keyword_match",
+    label: "키워드 포함",
+    hint: "신청자 첫 메시지에 특정 단어 포함 시",
+  },
+];
+
+export function StartEditor({
+  data,
+  onChange,
+}: EditorProps<StartNodeData>) {
+  const opt = TRIGGER_OPTIONS.find((o) => o.key === data.trigger);
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2">
+        <Label>트리거 조건</Label>
+        <Select
+          value={data.trigger}
+          onValueChange={(v) =>
+            onChange({
+              ...data,
+              trigger: v as TriggerKind,
+              triggerValue: "",
+            })
+          }
+        >
+          <SelectTrigger>
+            <span>{opt?.label ?? "선택"}</span>
+          </SelectTrigger>
+          <SelectContent>
+            {TRIGGER_OPTIONS.map((o) => (
+              <SelectItem key={o.key} value={o.key}>
+                <div className="flex flex-col">
+                  <span>{o.label}</span>
+                  <span className="text-[10px] text-muted-foreground">
+                    {o.hint}
+                  </span>
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {data.trigger === "language_match" && (
+        <div className="space-y-2">
+          <Label>대상 언어</Label>
+          <Select
+            value={data.triggerValue || undefined}
+            onValueChange={(v) => onChange({ ...data, triggerValue: v })}
+          >
+            <SelectTrigger>
+              <span>
+                {data.triggerValue
+                  ? LANGUAGE[data.triggerValue]?.label
+                  : "선택"}
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(LANGUAGE).map(([code, l]) => (
+                <SelectItem key={code} value={code}>
+                  {l.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {data.trigger === "status_match" && (
+        <div className="space-y-2">
+          <Label>대상 상태</Label>
+          <Select
+            value={data.triggerValue || undefined}
+            onValueChange={(v) => onChange({ ...data, triggerValue: v })}
+          >
+            <SelectTrigger>
+              <span>
+                {data.triggerValue
+                  ? CONSULTATION_STATUS[
+                      data.triggerValue as keyof typeof CONSULTATION_STATUS
+                    ]?.label
+                  : "선택"}
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              {Object.entries(CONSULTATION_STATUS).map(([code, s]) => (
+                <SelectItem key={code} value={code}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {data.trigger === "keyword_match" && (
+        <div className="space-y-2">
+          <Label htmlFor="trigger-kw">키워드</Label>
+          <Input
+            id="trigger-kw"
+            value={data.triggerValue}
+            onChange={(e) =>
+              onChange({ ...data, triggerValue: e.target.value })
+            }
+            placeholder="예: 유심, 가입, 요금제"
+            maxLength={80}
+          />
+          <p className="text-[11px] text-muted-foreground">
+            신청자 첫 메시지에 이 단어가 포함되면 플로우 발동.
+          </p>
+        </div>
+      )}
+
+      <div className="rounded-md border bg-muted/40 p-3 text-[11px] text-muted-foreground">
+        <p className="font-medium text-foreground">실행 시점:</p>
+        <p className="mt-0.5">
+          신청자가 채팅방에 들어오면 위 조건을 검사하고, 일치하면 출력
+          핸들로 연결된 다음 노드로 진행합니다.
+        </p>
+      </div>
+    </div>
+  );
+}
 
 // ─── Message ──────────────────────────────────────
 export function MessageEditor({

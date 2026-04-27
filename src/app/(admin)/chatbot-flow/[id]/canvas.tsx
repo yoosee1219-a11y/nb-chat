@@ -54,6 +54,7 @@ import {
   type NodeKind,
 } from "./node-types";
 import {
+  StartEditor,
   MessageEditor,
   ConditionEditor,
   LLMEditor,
@@ -380,12 +381,7 @@ function NodeEditor({
 }) {
   switch (data.kind) {
     case "start":
-      return (
-        <p className="text-xs text-muted-foreground">
-          시작 노드는 별도 설정이 없습니다. 신청자가 채팅방에 들어올 때 이
-          노드에서 플로우가 시작되며, 출력 핸들로 다음 노드를 연결하세요.
-        </p>
-      );
+      return <StartEditor data={data} onChange={onChange} />;
     case "message":
       return <MessageEditor data={data} onChange={onChange} />;
     case "condition":

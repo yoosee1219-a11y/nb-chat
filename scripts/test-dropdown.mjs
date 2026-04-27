@@ -147,6 +147,62 @@ try {
   console.log("✓ 노드 미리보기 실시간 갱신");
 
   await p.screenshot({ path: ".captures/test-dropdown-final.png" });
+
+  // ─── 시작 노드 편집 검증 ─────────────────────────
+  // Sheet 닫기
+  await p.keyboard.press("Escape");
+  await new Promise((r) => setTimeout(r, 300));
+
+  // 시작 노드 클릭
+  await p.evaluate(() => {
+    const node = document.querySelector(".react-flow__node-start");
+    if (node) node.click();
+  });
+  await new Promise((r) => setTimeout(r, 500));
+
+  // 시작 노드 패널에 "트리거 조건" Label 보이는지
+  const hasStartTrigger = await p.evaluate(() => {
+    const labels = [...document.querySelectorAll("label")];
+    return labels.some((l) => l.textContent?.includes("트리거 조건"));
+  });
+  if (!hasStartTrigger)
+    fail("시작 노드 클릭 후 '트리거 조건' 폼 안 나옴 — 편집 못 함");
+  console.log("✓ 시작 노드 트리거 조건 폼 표시됨");
+
+  // SelectTrigger를 puppeteer mouse click + keyboard로 처리 (base-ui는 PointerEvent 필요)
+  await p.click('[data-slot="select-trigger"]');
+  await new Promise((r) => setTimeout(r, 500));
+
+  // ArrowDown 3번 (always → language → status → keyword) + Enter
+  await p.keyboard.press("ArrowDown");
+  await p.keyboard.press("ArrowDown");
+  await p.keyboard.press("ArrowDown");
+  await new Promise((r) => setTimeout(r, 200));
+  await p.keyboard.press("Enter");
+  await new Promise((r) => setTimeout(r, 600));
+
+  // "키워드" Input 보이는지
+  const hasKwInput = await p.evaluate(
+    () => document.querySelector("#trigger-kw") !== null
+  );
+  if (!hasKwInput) fail("키워드 입력 필드 안 나옴");
+  console.log("✓ 키워드 모드 → Input 필드 노출");
+
+  // 키워드 입력 → 시작 노드 미리보기 갱신
+  await p.click("#trigger-kw");
+  await p.keyboard.type("유심", { delay: 30 });
+  await new Promise((r) => setTimeout(r, 400));
+
+  const startPreview = await p.evaluate(() => {
+    const node = document.querySelector(".react-flow__node-start");
+    return node?.textContent ?? "";
+  });
+  if (!startPreview.includes("유심"))
+    fail(`시작 노드 미리보기에 키워드 반영 안됨 (got: "${startPreview.slice(0, 80)}")`);
+  console.log("✓ 시작 노드 미리보기 키워드 갱신");
+
+  await p.screenshot({ path: ".captures/test-start-trigger.png" });
+
   console.log("\n=== 모든 검증 통과 ===");
 } catch (e) {
   console.error("ERR:", e.message);

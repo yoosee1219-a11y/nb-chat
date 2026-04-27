@@ -14,9 +14,25 @@ export type NodeKind =
   | "escalate"; // 사람 매니저로 에스컬레이션
 
 // ─── data 페이로드 ────────────────────────────────
+/**
+ * 시작 노드 = 플로우 트리거 조건.
+ * - always: 모든 신청자 (디폴트)
+ * - language_match: 신청자 모국어가 일치
+ * - status_match: 신청자 상태가 일치
+ * - keyword_match: 신청자 첫 메시지에 키워드 포함
+ */
+export type TriggerKind =
+  | "always"
+  | "language_match"
+  | "status_match"
+  | "keyword_match";
+
 export type StartNodeData = {
   kind: "start";
   label: string;
+  trigger: TriggerKind;
+  /** language_match: KO_KR / status_match: PENDING / keyword_match: "유심" 같은 단어 */
+  triggerValue: string;
 };
 
 export type MessageNodeData = {
@@ -155,7 +171,12 @@ export const TONE_CLASSES: Record<
 export function defaultData(kind: NodeKind): AnyNodeData {
   switch (kind) {
     case "start":
-      return { kind: "start", label: "시작" };
+      return {
+        kind: "start",
+        label: "시작",
+        trigger: "always",
+        triggerValue: "",
+      };
     case "message":
       return { kind: "message", text: "안녕하세요!", language: "KO_KR" };
     case "condition":

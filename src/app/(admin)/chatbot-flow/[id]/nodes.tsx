@@ -110,13 +110,49 @@ export function StartNode({
   data,
   selected,
 }: NodeProps<Node<StartNodeData>>) {
+  // 트리거 요약
+  let triggerSummary: React.ReactNode = (
+    <span className="text-muted-foreground">모든 신청자</span>
+  );
+
+  if (data.trigger === "language_match" && data.triggerValue) {
+    const lang = LANGUAGE[data.triggerValue];
+    triggerSummary = (
+      <>
+        <span className="text-muted-foreground">언어 = </span>
+        <span className="font-medium">{lang?.label ?? data.triggerValue}</span>
+      </>
+    );
+  } else if (data.trigger === "status_match" && data.triggerValue) {
+    const st =
+      CONSULTATION_STATUS[
+        data.triggerValue as keyof typeof CONSULTATION_STATUS
+      ];
+    triggerSummary = (
+      <>
+        <span className="text-muted-foreground">상태 = </span>
+        <span className="font-medium">{st?.label ?? data.triggerValue}</span>
+      </>
+    );
+  } else if (data.trigger === "keyword_match" && data.triggerValue) {
+    triggerSummary = (
+      <>
+        <span className="text-muted-foreground">키워드 포함: </span>
+        <span className="font-medium">"{data.triggerValue}"</span>
+      </>
+    );
+  }
+
   return (
     <NodeShell
       kind="start"
       selected={!!selected}
       showTopHandle={false}
       preview={
-        <p className="text-muted-foreground">신청자 진입 시 시작</p>
+        <div>
+          <p className="text-[10px] text-muted-foreground">트리거</p>
+          <p className="mt-0.5">{triggerSummary}</p>
+        </div>
       }
     />
   );
