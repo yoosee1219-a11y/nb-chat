@@ -19,7 +19,7 @@ export default async function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1 text-center">
-          <CardTitle className="text-2xl">FICS</CardTitle>
+          <CardTitle className="text-2xl">NB Chat</CardTitle>
           <CardDescription>외국인 통신사 가입 상담 관리</CardDescription>
         </CardHeader>
         <CardContent>

@@ -41,10 +41,10 @@ export default async function AdminLayout({
         <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white font-bold shadow-sm">
-              F
+              N
             </div>
             <div>
-              <p className="text-sm font-semibold text-sidebar-foreground">FICS</p>
+              <p className="text-sm font-semibold text-sidebar-foreground">NB Chat</p>
               <p className="text-[11px] text-sidebar-foreground/60">
                 외국인 통신 상담 관리
               </p>
@@ -88,7 +88,7 @@ export default async function AdminLayout({
         <header className="sticky top-0 z-10 flex h-14 items-center gap-2 border-b bg-background px-4">
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-5" />
-          <h1 className="text-sm font-medium">FICS 관리자</h1>
+          <h1 className="text-sm font-medium">NB Chat 관리자</h1>
         </header>
         <main className="flex-1 p-6">{children}</main>
       </SidebarInset>

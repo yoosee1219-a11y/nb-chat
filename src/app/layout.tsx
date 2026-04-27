@@ -11,7 +11,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FICS — 외국인 통신사 가입 상담 관리",
+  title: "NB Chat — 외국인 통신사 가입 상담 관리",
   description:
     "외국인 대상 통신사 가입 상담을 효율적으로 관리하는 어드민 시스템. 자동번역 채팅과 챗봇 플로우를 지원합니다.",
   robots: { index: false, follow: false },

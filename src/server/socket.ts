@@ -52,7 +52,7 @@ const prisma = new PrismaClient({
 // ─── HTTP + Socket.IO ────────────────────────────────────────────
 const httpServer = createServer((_req, res) => {
   res.writeHead(200, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ ok: true, service: "fics-socket", port: PORT }));
+  res.end(JSON.stringify({ ok: true, service: "nb-chat-socket", port: PORT }));
 });
 
 const io = new Server<
@@ -254,7 +254,7 @@ chatNs.on("connection", (socket) => {
 // ─── start ──────────────────────────────────────────────────────
 httpServer.listen(PORT, () => {
   console.log(
-    `✓ FICS socket server: http://localhost:${PORT} (ns=${CHAT_NAMESPACE})`
+    `✓ NB Chat socket server: http://localhost:${PORT} (ns=${CHAT_NAMESPACE})`
   );
   console.log(`  AUTH_SECRET: set (${process.env.AUTH_SECRET!.length} chars)`);
   console.log(`  CORS: ${ALLOWED_ORIGINS.join(", ")}`);
