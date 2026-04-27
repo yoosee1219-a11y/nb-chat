@@ -16,6 +16,7 @@ import { MessagePanel } from "./message-panel";
 import { MessageInput } from "./message-input";
 import { ApplicantSidePanel } from "./applicant-side-panel";
 import { MarkReadEffect } from "./mark-read-effect";
+import { RealtimeBridge } from "./realtime-bridge";
 import { assignRoomToMe } from "./actions";
 
 const ROOM_LIST_LIMIT = 100;
@@ -186,6 +187,7 @@ function SelectedRoomView({
 
   return (
     <>
+      <RealtimeBridge roomId={selectedRoomId} />
       <MarkReadEffect roomId={selectedRoomId} unreadCount={unreadCount} />
 
       {/* 헤더 */}
@@ -246,7 +248,10 @@ function SelectedRoomView({
       </div>
 
       {/* 입력창 */}
-      <MessageInput applicantLanguageLabel={lang?.label ?? "신청자 언어"} />
+      <MessageInput
+        roomId={selectedRoomId}
+        applicantLanguageLabel={lang?.label ?? "신청자 언어"}
+      />
     </>
   );
 }

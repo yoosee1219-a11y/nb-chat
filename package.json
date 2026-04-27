@@ -4,8 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:socket": "tsx watch src/server/socket.ts",
     "build": "next build",
     "start": "next start",
+    "start:socket": "tsx src/server/socket.ts",
+    "seed": "tsx prisma/seed.ts",
     "lint": "eslint"
   },
   "dependencies": {

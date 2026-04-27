@@ -10,9 +10,21 @@ import type { NextConfig } from "next";
  * CSP 주석:
  *   - script-src에 'unsafe-inline' 'unsafe-eval' 필요 = Next.js RSC + Turbopack
  *   - connect-src에 ws: wss: = Socket.IO
+ *   - connect-src에 NEXT_PUBLIC_SOCKET_URL = standalone 소켓 서버
  *   - connect-src에 translation.googleapis.com = 자동번역 API
  *   - img-src에 https: = 외부 이미지(첨부 파일 CDN)
  */
+const socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL ?? "http://localhost:4001";
+const socketOrigin = (() => {
+  try {
+    return new URL(socketUrl).origin;
+  } catch {
+    return "http://localhost:4001";
+  }
+})();
+const wsOrigin = socketOrigin
+  .replace(/^http:\/\//, "ws://")
+  .replace(/^https:\/\//, "wss://");
 const securityHeaders = [
   {
     key: "Strict-Transport-Security",
@@ -34,7 +46,7 @@ const securityHeaders = [
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' ws: wss: https://translation.googleapis.com https://translate.googleapis.com",
+      `connect-src 'self' ${socketOrigin} ${wsOrigin} https://translation.googleapis.com https://translate.googleapis.com`,
       "media-src 'self' blob:",
       "object-src 'none'",
       "frame-ancestors 'self'",
