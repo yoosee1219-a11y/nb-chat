@@ -273,11 +273,16 @@ export function FlowCanvas({
         nodeTypes={nodeTypes}
         onNodesChange={(c) => {
           onNodesChange(c);
-          setDirty(true);
+          // dimensions(자동 측정) / select(클릭 선택)는 dirty가 아님 — 사용자 의도적 변경만 dirty
+          const meaningful = c.some(
+            (ch) => ch.type !== "dimensions" && ch.type !== "select"
+          );
+          if (meaningful) setDirty(true);
         }}
         onEdgesChange={(c) => {
           onEdgesChange(c);
-          setDirty(true);
+          const meaningful = c.some((ch) => ch.type !== "select");
+          if (meaningful) setDirty(true);
         }}
         onConnect={onConnect}
         onSelectionChange={onSelectionChange}
