@@ -8,7 +8,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Search, X } from "lucide-react";
@@ -73,7 +72,14 @@ export function ApplicantSearchBar() {
         }}
       >
         <SelectTrigger className="w-full sm:w-40">
-          <SelectValue placeholder="국적" />
+          {nationality === ALL ? (
+            <span className="text-muted-foreground">국적 전체</span>
+          ) : (
+            <span className="flex items-center gap-1.5">
+              <span>{NATIONALITY[nationality]?.flag}</span>
+              <span>{NATIONALITY[nationality]?.label ?? nationality}</span>
+            </span>
+          )}
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>국적 전체</SelectItem>
@@ -98,7 +104,14 @@ export function ApplicantSearchBar() {
         }}
       >
         <SelectTrigger className="w-full sm:w-40">
-          <SelectValue placeholder="상태" />
+          {status === ALL ? (
+            <span className="text-muted-foreground">상태 전체</span>
+          ) : (
+            <span>
+              {CONSULTATION_STATUS[status as keyof typeof CONSULTATION_STATUS]
+                ?.label ?? status}
+            </span>
+          )}
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL}>상태 전체</SelectItem>

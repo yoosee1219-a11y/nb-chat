@@ -47,3 +47,7 @@ next-env.d.ts
 /dev.db-journal
 /prisma/dev.db
 /prisma/dev.db-journal
+.gstack/
+
+# capture artifacts (생성: scripts/capture.mjs)
+/.captures/
