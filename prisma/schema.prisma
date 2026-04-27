@@ -229,6 +229,31 @@ model Outbox {
 }
 
 // ============================================
+// 챗봇 플로우 (★ Vijob 미구현 — 우리 v2의 차별화)
+// status: DRAFT | PUBLISHED | ARCHIVED
+// trigger: 어떤 조건에서 이 플로우를 시작하는지 (예: "applicant.status=PENDING", "language=VI_VN")
+// nodesData/edgesData: xyflow JSON 그대로 저장 (정규화는 추후 필요시)
+// ============================================
+model ChatbotFlow {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  status      String  @default("DRAFT")
+  trigger     String? // JSON — 트리거 조건 (Phase 4.4)
+
+  // xyflow 상태 — Phase 4.1에선 직렬화된 JSON 저장
+  nodesData String @default("[]")
+  edgesData String @default("[]")
+
+  createdBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@map("chatbot_flows")
+}
+
+// ============================================
 // 번역 캐시 (Redis 백업용 영구 저장)
 // 같은 메시지 ↔ 언어쌍 재번역 방지로 비용 절감
 // ============================================
