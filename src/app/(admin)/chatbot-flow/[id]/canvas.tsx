@@ -61,6 +61,7 @@ import {
   TranslateEditor,
   EscalateEditor,
 } from "./editors";
+import { FlowSimulator } from "./simulator";
 
 const KIND_ICON = {
   start: Play,
@@ -112,8 +113,25 @@ export function FlowCanvas({
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
   const [dirty, setDirty] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [simulatorOpen, setSimulatorOpen] = useState(false);
+  const [traceNodeIds, setTraceNodeIds] = useState<string[]>([]);
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) ?? null;
+
+  // 트레이스 하이라이트가 반영된 노드 (시뮬레이터 결과 시각화)
+  const decoratedNodes = nodes.map((n) => {
+    const idx = traceNodeIds.indexOf(n.id);
+    if (idx === -1) return n;
+    return {
+      ...n,
+      style: {
+        ...n.style,
+        outline: "2px solid rgb(16 185 129)", // emerald-500
+        outlineOffset: 2,
+        boxShadow: "0 0 0 4px rgba(16, 185, 129, 0.15)",
+      },
+    };
+  });
 
   const onConnect = useCallback(
     (params: Connection) => {
@@ -247,6 +265,18 @@ export function FlowCanvas({
 
         <div className="h-5 w-px bg-border" />
 
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setSimulatorOpen(true)}
+          title="현재 캔버스로 시뮬레이션 실행"
+        >
+          <Play className="mr-1.5 h-3.5 w-3.5 text-emerald-600" />
+          시뮬레이터
+        </Button>
+
+        <div className="h-5 w-px bg-border" />
+
         {dirty ? (
           <Badge variant="outline" className="text-[10px] text-amber-600">
             저장 안됨
@@ -269,7 +299,7 @@ export function FlowCanvas({
 
       {/* 캔버스 */}
       <ReactFlow
-        nodes={nodes}
+        nodes={decoratedNodes}
         edges={edges}
         nodeTypes={nodeTypes}
         onNodesChange={(c) => {
@@ -363,6 +393,18 @@ export function FlowCanvas({
           )}
         </SheetContent>
       </Sheet>
+
+      {/* 시뮬레이터 */}
+      <FlowSimulator
+        open={simulatorOpen}
+        onOpenChange={(open) => {
+          setSimulatorOpen(open);
+          if (!open) setTraceNodeIds([]);
+        }}
+        nodes={nodes}
+        edges={edges}
+        onTraceChange={setTraceNodeIds}
+      />
     </div>
   );
 }
