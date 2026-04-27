@@ -6,9 +6,12 @@
  *  - 라이브러리/벤더 교체 비용 0
  *  - 테스트에서 deterministic mock 주입 가능
  *  - 캐시 레이어(Phase 3.4의 TranslationCache)도 같은 인터페이스 안에 wrap
+ *
+ * NOTE: `server-only`는 Next.js 전용 가드라 여기서는 쓰지 않음 —
+ *       standalone socket 서버에서도 import 가능해야 하기 때문.
+ *       대신 호출자(Next server component / server action / socket 서버)가
+ *       반드시 서버 컨텍스트인지 책임진다.
  */
-
-import "server-only";
 
 export type TranslateInput = {
   text: string;
