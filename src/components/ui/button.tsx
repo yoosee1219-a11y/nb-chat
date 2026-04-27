@@ -1,3 +1,4 @@
+import * as React from "react"
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
 
@@ -40,18 +41,43 @@ const buttonVariants = cva(
   }
 )
 
+type ButtonProps = ButtonPrimitive.Props &
+  VariantProps<typeof buttonVariants> & {
+    /**
+     * shadcn 호환 — children(React element)을 base-ui useRender의 render prop으로 forward.
+     * <Button asChild><Link href="...">...</Link></Button> 패턴 사용 가능.
+     */
+    asChild?: boolean
+  }
+
 function Button({
   className,
   variant = "default",
   size = "default",
+  asChild = false,
+  children,
   ...props
-}: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+}: ButtonProps) {
+  const merged = cn(buttonVariants({ variant, size, className }))
+
+  if (asChild && React.isValidElement(children)) {
+    // asChild일 때는 자식 element가 button이 아닐 수 있음 (Link → <a> 등)
+    // → nativeButton=false로 base-ui의 native <button> 강제 해제
+    return (
+      <ButtonPrimitive
+        data-slot="button"
+        className={merged}
+        nativeButton={false}
+        render={children}
+        {...props}
+      />
+    )
+  }
+
   return (
-    <ButtonPrimitive
-      data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
-      {...props}
-    />
+    <ButtonPrimitive data-slot="button" className={merged} {...props}>
+      {children}
+    </ButtonPrimitive>
   )
 }
 
