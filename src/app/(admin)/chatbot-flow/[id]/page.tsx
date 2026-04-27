@@ -5,6 +5,8 @@ import { prisma } from "@/lib/prisma";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FlowCanvas } from "./canvas";
+import type { Edge, Node } from "@xyflow/react";
+import type { AnyNodeData } from "./node-types";
 
 const STATUS_BADGE: Record<string, { label: string; className: string }> = {
   DRAFT: { label: "초안", className: "bg-amber-100 text-amber-700 border-amber-200" },
@@ -27,9 +29,16 @@ export default async function FlowEditPage({
   const flow = await prisma.chatbotFlow.findUnique({ where: { id } });
   if (!flow) notFound();
 
-  const nodes = JSON.parse(flow.nodesData);
-  const edges = JSON.parse(flow.edgesData);
+  const nodes = JSON.parse(flow.nodesData) as Node<AnyNodeData>[];
+  const edges = JSON.parse(flow.edgesData) as Edge[];
   const status = STATUS_BADGE[flow.status] ?? STATUS_BADGE.DRAFT;
+
+  // EscalateNode에서 매니저 선택용
+  const managers = await prisma.manager.findMany({
+    where: { isActive: true },
+    select: { id: true, name: true, email: true },
+    orderBy: { name: "asc" },
+  });
 
   return (
     <div className="-m-6 flex h-[calc(100vh-3.5rem)] flex-col">
@@ -57,7 +66,12 @@ export default async function FlowEditPage({
 
       {/* 캔버스 */}
       <div className="min-h-0 flex-1">
-        <FlowCanvas flowId={flow.id} initialNodes={nodes} initialEdges={edges} />
+        <FlowCanvas
+          flowId={flow.id}
+          initialNodes={nodes}
+          initialEdges={edges}
+          managers={managers}
+        />
       </div>
     </div>
   );
