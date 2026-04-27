@@ -1,54 +1,18 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
-import {
-  LayoutDashboard,
-  Users,
-  FileText,
-  MessageCircle,
-  Bot,
-  UserCog,
-  LogOut,
-} from "lucide-react";
+import { LogOut } from "lucide-react";
 import { getSession, logout } from "@/lib/auth";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
   SidebarHeader,
   SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
   SidebarProvider,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
-
-const NAV = [
-  {
-    label: "메인",
-    items: [
-      { href: "/dashboard", label: "대시보드", icon: LayoutDashboard },
-    ],
-  },
-  {
-    label: "운영",
-    items: [
-      { href: "/applicants", label: "신청자 관리", icon: Users },
-      { href: "/plans", label: "요금제 관리", icon: FileText },
-      { href: "/chat", label: "채팅", icon: MessageCircle },
-      { href: "/chatbot-flow", label: "챗봇 플로우", icon: Bot },
-    ],
-  },
-  {
-    label: "관리",
-    items: [{ href: "/managers", label: "매니저 관리", icon: UserCog }],
-  },
-];
+import { SidebarNav } from "./sidebar-nav";
 
 async function logoutAction() {
   "use server";
@@ -74,55 +38,43 @@ export default async function AdminLayout({
   return (
     <SidebarProvider>
       <Sidebar>
-        <SidebarHeader className="border-b px-4 py-4">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground font-bold">
+        <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white font-bold shadow-sm">
               F
             </div>
             <div>
-              <p className="text-sm font-semibold">FICS</p>
-              <p className="text-xs text-muted-foreground">외국인 통신 상담</p>
+              <p className="text-sm font-semibold text-sidebar-foreground">FICS</p>
+              <p className="text-[11px] text-sidebar-foreground/60">
+                외국인 통신 상담 관리
+              </p>
             </div>
           </div>
         </SidebarHeader>
 
         <SidebarContent>
-          {NAV.map((group) => (
-            <SidebarGroup key={group.label}>
-              <SidebarGroupLabel>{group.label}</SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {group.items.map((item) => (
-                    <SidebarMenuItem key={item.href}>
-                      <SidebarMenuButton asChild>
-                        <Link href={item.href}>
-                          <item.icon />
-                          <span>{item.label}</span>
-                        </Link>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          ))}
+          <SidebarNav />
         </SidebarContent>
 
-        <SidebarFooter className="border-t p-3">
+        <SidebarFooter className="border-t border-sidebar-border p-3">
           <div className="flex items-center gap-3">
-            <Avatar className="h-8 w-8">
-              <AvatarFallback>{initials}</AvatarFallback>
+            <Avatar className="h-9 w-9">
+              <AvatarFallback className="bg-sidebar-accent text-sidebar-accent-foreground text-xs">
+                {initials}
+              </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">{session.name}</p>
-              <p className="text-xs text-muted-foreground truncate">
+              <p className="truncate text-sm font-medium text-sidebar-foreground">
+                {session.name}
+              </p>
+              <p className="truncate text-[11px] text-sidebar-foreground/60">
                 {session.email}
               </p>
             </div>
             <form action={logoutAction}>
               <button
                 type="submit"
-                className="rounded-md p-1.5 hover:bg-muted"
+                className="rounded-md p-1.5 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 title="로그아웃"
               >
                 <LogOut className="h-4 w-4" />

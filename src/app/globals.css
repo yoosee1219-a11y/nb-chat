@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "pretendard/dist/web/variable/pretendardvariable.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -49,6 +50,12 @@
 }
 
 :root {
+  /* 본문 폰트 — 한글 어드민용 Pretendard 우선, 영문/숫자 system fallback */
+  --font-sans:
+    "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", system-ui, "Apple SD Gothic Neo", "Noto Sans KR",
+    "Malgun Gothic", sans-serif;
+
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -67,20 +74,25 @@
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+
+  /* 차트 색상 — 본문은 모노크롬 유지하되 차트만 컬러 시리즈 (Vijob 톤 참고) */
+  --chart-1: oklch(0.55 0.20 264);  /* indigo */
+  --chart-2: oklch(0.62 0.18 200);  /* cyan */
+  --chart-3: oklch(0.70 0.18 80);   /* amber */
+  --chart-4: oklch(0.65 0.20 350);  /* rose */
+  --chart-5: oklch(0.60 0.18 150);  /* emerald */
+
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+
+  /* 사이드바 — 다크 navy 톤 (어드민 운영자 장시간 작업 시 가독성 + 위계감) */
+  --sidebar: oklch(0.22 0.025 260);
+  --sidebar-foreground: oklch(0.85 0.015 260);
+  --sidebar-primary: oklch(0.985 0 0);
+  --sidebar-primary-foreground: oklch(0.20 0.02 260);
+  --sidebar-accent: oklch(0.30 0.030 260);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(0.32 0.025 260);
+  --sidebar-ring: oklch(0.60 0.05 260);
 }
 
 .dark {
