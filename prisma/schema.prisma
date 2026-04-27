@@ -1,0 +1,248 @@
+// ============================================
+// FICS Clone — Prisma 7 Schema
+// 출처: docs/ANALYSIS.md (Vijob FICS 역공학 결과)
+// 본 v1: SQLite (MVP) / v1.1: PostgreSQL 마이그레이션
+// SQLite 제약: enum 미지원 → String + 주석 / JSON 미지원 → String 직렬화
+// ============================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ============================================
+// 매니저 (상담사)
+// role: ADMIN | MANAGER | VIEWER
+// ============================================
+model Manager {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         String    @default("MANAGER")
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  rooms         ChatRoom[]
+  notes         Note[]
+  auditLogs     AuditLog[]
+  statusChanges StatusHistory[]
+
+  @@map("managers")
+}
+
+// ============================================
+// 신청자 (외국인)
+// status: PENDING | IN_PROGRESS | CONFIRMED | CANCELLED | UNCONFIRMED
+// nationality: VN | NP | TW | RU | MN | MM | US | BD | LA | KR | TL | ETC
+// preferredLanguage: KO_KR | VI_VN | NE_NP | ZH_TW | RU_RU | MN_MN | MY_MM | EN_US | BN_BD | LO_LA | PT_TL
+// ============================================
+model Applicant {
+  id                String   @id @default(cuid())
+  name              String
+  nationality       String
+  preferredLanguage String
+  email             String?
+  phone             String?
+  visa              String?
+  privacyConsent    Boolean  @default(false)
+  thirdPartyConsent Boolean  @default(false)
+  status            String   @default("PENDING")
+  appliedPlanId     String?
+  appliedAt         DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  appliedPlan   Plan?           @relation(fields: [appliedPlanId], references: [id])
+  rooms         ChatRoom[]
+  notes         Note[]
+  statusHistory StatusHistory[]
+
+  @@index([status])
+  @@index([nationality])
+  @@map("applicants")
+}
+
+// ============================================
+// 요금제
+// carrier: LGU+ | KT | SKT (멀티 통신사 확장 대비)
+// ============================================
+model Plan {
+  id            String   @id @default(cuid())
+  name          String
+  carrier       String   @default("LGU+")
+  monthlyFee    Int
+  dataAllowance String?
+  voiceMinutes  String?
+  smsCount      String?
+  description   String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  applicants Applicant[]
+
+  @@map("plans")
+}
+
+// ============================================
+// 채팅방
+// ============================================
+model ChatRoom {
+  id            String    @id @default(cuid())
+  applicantId   String
+  managerId     String?
+  isFavorite    Boolean   @default(false)
+  unreadCount   Int       @default(0)
+  lastMessageAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  applicant Applicant @relation(fields: [applicantId], references: [id])
+  manager   Manager?  @relation(fields: [managerId], references: [id])
+  messages  Message[]
+
+  @@index([managerId, lastMessageAt])
+  @@index([applicantId])
+  @@map("chat_rooms")
+}
+
+// ============================================
+// ★ 메시지 (자동번역 핵심)
+// senderType: APPLICANT | MANAGER | SYSTEM
+// type: TEXT | IMAGE | VIDEO | FILE | VOICE | STICKER | SYSTEM | CARD
+// language: KO_KR | RU_RU | VI_VN | ... (BCP-47 underscore variant)
+// cardType: RESUME | HOUSING | PROFILE | VIDEO | PLAN | GENERIC
+// ============================================
+model Message {
+  id       String  @id @default(cuid())
+  roomId   String
+  senderType String
+  senderId String? // applicantId or managerId (senderType에 따라)
+  type     String
+
+  // TEXT — 자동번역의 본체
+  originalText   String?
+  language       String?
+  translatedText String?
+
+  // 미디어 (JSON 직렬화)
+  attachments String? // [{url, name, size, mimeType, width?, height?}]
+
+  // 카드
+  cardType    String?
+  cardPayload String? // JSON
+
+  // 메타
+  isRead    Boolean   @default(false)
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime?
+
+  room ChatRoom @relation(fields: [roomId], references: [id])
+
+  @@index([roomId, createdAt])
+  @@index([roomId, isRead])
+  @@map("messages")
+}
+
+// ============================================
+// 메모 (매니저가 신청자에 남기는 메모)
+// ============================================
+model Note {
+  id          String    @id @default(cuid())
+  applicantId String
+  managerId   String
+  content     String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime?
+
+  applicant Applicant @relation(fields: [applicantId], references: [id])
+  manager   Manager   @relation(fields: [managerId], references: [id])
+
+  @@index([applicantId])
+  @@map("notes")
+}
+
+// ============================================
+// 상태 변경 이력
+// ============================================
+model StatusHistory {
+  id          String   @id @default(cuid())
+  applicantId String
+  managerId   String
+  fromStatus  String
+  toStatus    String
+  reason      String?
+  changedAt   DateTime @default(now())
+
+  applicant Applicant @relation(fields: [applicantId], references: [id])
+  manager   Manager   @relation(fields: [managerId], references: [id])
+
+  @@index([applicantId, changedAt])
+  @@map("status_history")
+}
+
+// ============================================
+// 감사 로그 (★ Vijob엔 없는 우리만의 강점)
+// action: MESSAGE_SENT | STATUS_CHANGED | DATA_VIEWED | LOGIN | LOGOUT | NOTE_CREATED | NOTE_UPDATED | NOTE_DELETED | ...
+// ============================================
+model AuditLog {
+  id        String   @id @default(cuid())
+  managerId String
+  action    String
+  resource  String
+  metadata  String? // JSON
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  manager Manager @relation(fields: [managerId], references: [id])
+
+  @@index([managerId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+// ============================================
+// Outbox 패턴 (★ 메시지 손실 0 보장)
+// 트랜잭션 안에서 outbox row 생성 → BullMQ 워커가 비동기 처리
+// ============================================
+model Outbox {
+  id          String    @id @default(cuid())
+  eventType   String // MESSAGE_CREATED | MESSAGE_UPDATED | STATUS_CHANGED | ROOM_JOINED | ...
+  aggregateId String // roomId | applicantId
+  payload     String // JSON
+  processedAt DateTime?
+  attempts    Int       @default(0)
+  lastError   String?
+  createdAt   DateTime  @default(now())
+
+  @@index([processedAt, createdAt])
+  @@map("outbox")
+}
+
+// ============================================
+// 번역 캐시 (Redis 백업용 영구 저장)
+// 같은 메시지 ↔ 언어쌍 재번역 방지로 비용 절감
+// ============================================
+model TranslationCache {
+  id             String   @id @default(cuid())
+  contentHash    String   @unique // sha256(text + sourceLang + targetLang)
+  sourceLanguage String
+  targetLanguage String
+  originalText   String
+  translatedText String
+  hits           Int      @default(0)
+  createdAt      DateTime @default(now())
+  lastUsedAt     DateTime @default(now())
+
+  @@index([contentHash])
+  @@map("translation_cache")
+}
