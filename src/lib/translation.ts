@@ -120,6 +120,8 @@ function contentHash(text: string, src: string, tgt: string): string {
     .digest("hex");
 }
 
+const CACHE_MAX_CHARS = 4000;
+
 class CachingTranslator implements Translator {
   constructor(private inner: Translator) {}
 
@@ -127,6 +129,11 @@ class CachingTranslator implements Translator {
     const { text, sourceLanguage, targetLanguage } = input;
     if (sourceLanguage === targetLanguage) {
       return { translatedText: text, cached: false, charsBilled: 0 };
+    }
+
+    // 너무 긴 텍스트는 read/write 모두 캐시 우회 (DB 비대화/조회 비용 차단)
+    if (text.length > CACHE_MAX_CHARS) {
+      return this.inner.translate(input);
     }
 
     // Prisma는 서버에서만 import (싸이클 방지로 동적 require)
@@ -162,28 +169,24 @@ class CachingTranslator implements Translator {
     const result = await this.inner.translate(input);
 
     // 3) 저장 (실패해도 응답은 정상)
-    // 너무 긴 텍스트는 캐시 가치 적고 DB 비대화 → 4KB 이상은 저장 X
-    const CACHE_MAX_CHARS = 4000;
-    if (text.length <= CACHE_MAX_CHARS) {
-      try {
-        await prisma.translationCache.create({
-          data: {
-            contentHash: hash,
-            sourceLanguage,
-            targetLanguage,
-            originalText: text,
-            translatedText: result.translatedText.slice(0, CACHE_MAX_CHARS * 2),
-          },
-        });
-      } catch (e) {
-        // P2002 = Prisma unique constraint violation (병행 miss → 정상)
-        const code =
-          e && typeof e === "object" && "code" in e
-            ? (e as { code?: string }).code
-            : null;
-        if (code !== "P2002") {
-          console.error("[translation-cache] write failed", e);
-        }
+    try {
+      await prisma.translationCache.create({
+        data: {
+          contentHash: hash,
+          sourceLanguage,
+          targetLanguage,
+          originalText: text,
+          translatedText: result.translatedText.slice(0, CACHE_MAX_CHARS * 2),
+        },
+      });
+    } catch (e) {
+      // P2002 = Prisma unique constraint violation (병행 miss → 정상)
+      const code =
+        e && typeof e === "object" && "code" in e
+          ? (e as { code?: string }).code
+          : null;
+      if (code !== "P2002") {
+        console.error("[translation-cache] write failed", e);
       }
     }
 
