@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -51,3 +52,16 @@ next-env.d.ts
 
 # capture artifacts (생성: scripts/capture.mjs)
 /.captures/
+
+# 첨부파일 업로드 (운영에선 S3/Vercel Blob — 로컬만)
+/public/uploads/*
+!/public/uploads/.gitkeep
+
+# 빌드 산출물
+/.turbo/
+/.swc/
+
+# IDE
+/.vscode/
+/.idea/
+*.swp

@@ -76,10 +76,69 @@ webapp/
 - ✅ Phase 2: 어드민 CRUD (대시보드/신청자/요금제/매니저)
 - ✅ Phase 3.1: 채팅 UI 셸 (3-pane, 자동번역 듀얼 표시)
 - ✅ Phase 3.2: 실시간 송수신 (Standalone Socket.IO + 권한 체크)
-- ✅ Phase 5.1~5.2: 디자인 통일 (Pretendard, 다크 사이드바, PageHeader 컴포넌트)
+- ✅ Phase 3.4: Google Translate v2 + Anthropic Claude API 통합 (env 자동 폴백)
+- ✅ Phase 3.5: 고객 모바일 채팅 UI (`/c/[roomId]`) + 자가 가입 (`/apply`)
+- ✅ Phase 4: 챗봇 플로우 빌더 (xyflow) + 실행 엔진 + 시뮬레이터
+- ✅ Phase 4.4: 소켓 챗봇 트리거 (PUBLISHED 플로우 자동 발동)
+- ✅ Phase 5: 거래처(Partner) + 유입 추적 + Plan 약정 + Audit 로그
+- ✅ A1: 번역 캐시 (DB wrapper) — 30~50% 비용 절감
+- ✅ B1: 메시지 첨부파일 (이미지/PDF, 매직 바이트 검증)
+- ✅ B2: 매니저 실시간 알림 (토스트 + 브라우저 Notification)
 - ⏭ Phase 3.3: Outbox + BullMQ (메시지 손실 방지) — 멀티노드 가면
-- ⏭ Phase 3.4: Google Cloud Translation v3 실 연동
-- ⏭ Phase 4: 챗봇 플로우 빌더 (xyflow + LLM 노드)
+- ⏭ 운영 배포: Turso(DB) + Railway(소켓) + Vercel Blob(파일)
+
+## 배포 (운영)
+
+이 시스템은 3개 서비스로 분리됩니다:
+
+```
+[Vercel]              [Railway/Render]       [Turso / Neon]
+Next.js 프론트  ──── socket.ts (24/7) ──── PostgreSQL/SQLite
+                       ↑ 같은 DB 공유 ↑
+```
+
+### 1) Vercel (Next.js 프론트)
+
+```bash
+# 자동 배포: GitHub 연동 후 push만 하면 자동 빌드
+# 환경변수 (Settings → Environment Variables → Production and Preview):
+#   AUTH_SECRET                 (필수)
+#   DATABASE_URL                (Turso libsql URL 또는 Postgres)
+#   NEXT_PUBLIC_SOCKET_URL      (별도 호스팅한 소켓 서버 URL)
+#   GOOGLE_TRANSLATE_API_KEY    (선택)
+#   ANTHROPIC_API_KEY           (선택)
+```
+
+**제한**: Vercel serverless라 (1) WebSocket 미지원 (2) read-only 파일시스템 → DB write/uploads 안 됨. 그래서 아래 분리.
+
+### 2) Railway (Socket.IO 서버)
+
+```bash
+# Railway → New Project → Deploy from GitHub
+# 같은 nb-chat repo, 단 start command만 다름:
+#   Build:  npm install
+#   Start:  npm run start:socket
+# 환경변수:
+#   AUTH_SECRET            (Vercel과 동일)
+#   DATABASE_URL           (Turso/Postgres와 동일)
+#   SOCKET_PORT=$PORT      (Railway가 PORT env 자동 주입)
+#   SOCKET_ALLOWED_ORIGINS (https://your-app.vercel.app)
+#   GOOGLE_TRANSLATE_API_KEY / ANTHROPIC_API_KEY  (선택, 챗봇 트리거용)
+```
+
+→ Railway가 발급한 도메인을 Vercel의 `NEXT_PUBLIC_SOCKET_URL`에 입력.
+
+### 3) Turso (DB) — Supabase 한도 차서 못 쓸 때
+
+```bash
+# Turso CLI 설치 후
+turso db create nb-chat
+turso db tokens create nb-chat   # → 토큰 생성
+turso db show nb-chat --url      # → libsql URL
+
+# Prisma adapter 교체 필요 (lib/prisma.ts):
+#   PrismaBetterSqlite3 → @libsql/client + @prisma/adapter-libsql
+```
 
 ## 확장성 포인트 (코드에 박혀있음)
 
@@ -87,7 +146,9 @@ webapp/
 |---|---|---|
 | Socket.IO namespace | `/chat` 고정 | `lib/socket-types.ts` `CHAT_NAMESPACE` |
 | Pub/Sub 어댑터 | in-memory | `server/socket.ts` Redis adapter 자리 |
-| 번역 엔진 | MockTranslator | `lib/translation.ts` `getTranslator()` 분기 |
+| 번역 엔진 | Mock 폴백 / Google v2 | `lib/translation.ts` `getTranslator()` 분기 |
+| LLM | Mock 폴백 / Anthropic / OpenAI | `lib/llm.ts` `getLLMClient()` 분기 |
 | 메시지 손실 방지 | 직접 broadcast | `chat:send` 핸들러에 Outbox row 추가로 교체 |
 | 인증 | 쿠키 우선 + 토큰 fallback | cross-site 시 토큰 엔드포인트 추가 |
-| DB | SQLite | Prisma adapter 교체 → PostgreSQL |
+| DB | SQLite (file:./dev.db) | Prisma adapter 교체 → Turso/Postgres |
+| 파일 업로드 | `public/uploads/` | `app/api/upload/route.ts` → Vercel Blob/S3 |
