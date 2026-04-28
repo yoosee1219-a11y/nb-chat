@@ -15,7 +15,11 @@ import { NATIONALITY, CONSULTATION_STATUS } from "@/lib/constants";
 
 const ALL = "__all__";
 
-export function ApplicantSearchBar() {
+export function ApplicantSearchBar({
+  partners,
+}: {
+  partners?: { code: string; name: string }[];
+}) {
   const router = useRouter();
   const params = useSearchParams();
   const [isPending, startTransition] = useTransition();
@@ -23,6 +27,7 @@ export function ApplicantSearchBar() {
   const [q, setQ] = useState(params.get("q") ?? "");
   const [nationality, setNationality] = useState(params.get("nationality") ?? ALL);
   const [status, setStatus] = useState(params.get("status") ?? ALL);
+  const [partner, setPartner] = useState(params.get("partner") ?? ALL);
 
   useEffect(() => {
     const t = setTimeout(() => apply(), 300);
@@ -35,6 +40,7 @@ export function ApplicantSearchBar() {
     if (q.trim()) sp.set("q", q.trim());
     if (nationality !== ALL) sp.set("nationality", nationality);
     if (status !== ALL) sp.set("status", status);
+    if (partner !== ALL) sp.set("partner", partner);
     startTransition(() => router.replace(`/applicants?${sp.toString()}`));
   }
 
@@ -42,10 +48,15 @@ export function ApplicantSearchBar() {
     setQ("");
     setNationality(ALL);
     setStatus(ALL);
+    setPartner(ALL);
     startTransition(() => router.replace("/applicants"));
   }
 
-  const hasFilter = !!q || nationality !== ALL || status !== ALL;
+  const hasFilter =
+    !!q || nationality !== ALL || status !== ALL || partner !== ALL;
+  const partnerLookup = Object.fromEntries(
+    (partners ?? []).map((p) => [p.code, p.name])
+  );
 
   return (
     <div className="flex flex-col gap-3 sm:flex-row">
@@ -122,6 +133,41 @@ export function ApplicantSearchBar() {
           ))}
         </SelectContent>
       </Select>
+
+      {partners && partners.length > 0 && (
+        <Select
+          value={partner}
+          onValueChange={(v) => {
+            setPartner(v);
+            startTransition(() => {
+              const sp = new URLSearchParams(params.toString());
+              if (v === ALL) sp.delete("partner");
+              else sp.set("partner", v);
+              router.replace(`/applicants?${sp.toString()}`);
+            });
+          }}
+        >
+          <SelectTrigger className="w-full sm:w-40">
+            {partner === ALL ? (
+              <span className="text-muted-foreground">유입 전체</span>
+            ) : (
+              <span>
+                {partner === "DIRECT"
+                  ? "자체광고"
+                  : (partnerLookup[partner] ?? partner)}
+              </span>
+            )}
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ALL}>유입 전체</SelectItem>
+            {partners.map((p) => (
+              <SelectItem key={p.code} value={p.code}>
+                {p.code === "DIRECT" ? "자체광고" : p.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      )}
 
       {hasFilter && (
         <Button

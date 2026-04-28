@@ -67,6 +67,7 @@ async function main() {
       dataAllowance: "6GB",
       voiceMinutes: "기본 제공",
       smsCount: "기본 제공",
+      commitment: "12개월",
       description: "외국인 입문자용 가성비 요금제",
     },
     {
@@ -76,6 +77,7 @@ async function main() {
       dataAllowance: "30GB",
       voiceMinutes: "무제한",
       smsCount: "무제한",
+      commitment: "24개월",
       description: "일상 사용에 적합",
     },
     {
@@ -85,6 +87,7 @@ async function main() {
       dataAllowance: "무제한",
       voiceMinutes: "무제한",
       smsCount: "무제한",
+      commitment: "24개월",
       description: "고용량 데이터 사용자용",
     },
     {
@@ -94,7 +97,8 @@ async function main() {
       dataAllowance: "3GB",
       voiceMinutes: "100분",
       smsCount: "100건",
-      description: "단기 체류용",
+      commitment: "약정 없음",
+      description: "단기 체류용 (선불)",
     },
   ];
 
@@ -102,7 +106,7 @@ async function main() {
   for (const p of planSeeds) {
     const created = await prisma.plan.upsert({
       where: { id: `seed-plan-${p.name}` },
-      update: {},
+      update: { commitment: p.commitment }, // 기존 데이터에도 약정 채움
       create: { id: `seed-plan-${p.name}`, ...p },
     });
     plans.push(created);
@@ -428,6 +432,50 @@ async function main() {
     }
   }
   console.log(`  ✓ 메시지 ${totalMsgs}건 생성 (자동번역 패턴 포함)`);
+
+  // ========================================
+  // 거래처 (Partner) — Phase 5.1
+  // DIRECT는 시스템 reserved — 자체광고 유입을 묶는 용도
+  // 샘플 거래처 2개도 함께 (스텔업, 워크온)
+  // ========================================
+  console.log("\n🏢 거래처...");
+
+  await prisma.partner.upsert({
+    where: { code: "DIRECT" },
+    update: {},
+    create: {
+      code: "DIRECT",
+      name: "자체광고",
+      memo: "본인 회사가 직접 집행하는 광고/캠페인. UTM 파라미터로 캠페인별 분리.",
+      isActive: true,
+    },
+  });
+
+  await prisma.partner.upsert({
+    where: { code: "stealup" },
+    update: {},
+    create: {
+      code: "stealup",
+      name: "스텔업",
+      contact: "스텔업 제휴팀 / partners@stealup.example",
+      memo: "교육 플랫폼 시청 고객 대상 리타겟팅 배너",
+      isActive: true,
+    },
+  });
+
+  await prisma.partner.upsert({
+    where: { code: "workon" },
+    update: {},
+    create: {
+      code: "workon",
+      name: "워크온",
+      contact: "워크온 운영팀 / biz@workon.example",
+      memo: "워크온 사이트 내 배너 노출",
+      isActive: true,
+    },
+  });
+
+  console.log("  ✓ DIRECT(자체광고) + 샘플 거래처 2개 (스텔업, 워크온)");
 
   // ========================================
   // 챗봇 플로우 (PUBLISHED) — Phase 4.4 데모용

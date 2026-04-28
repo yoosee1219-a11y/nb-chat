@@ -13,6 +13,7 @@ export type PlanInput = {
   dataAllowance?: string;
   voiceMinutes?: string;
   smsCount?: string;
+  commitment?: string;
   description?: string;
   isActive?: boolean;
 };
@@ -38,6 +39,7 @@ export async function createPlan(input: PlanInput) {
       dataAllowance: input.dataAllowance?.trim() || null,
       voiceMinutes: input.voiceMinutes?.trim() || null,
       smsCount: input.smsCount?.trim() || null,
+      commitment: input.commitment?.trim() || null,
       description: input.description?.trim() || null,
       isActive: input.isActive ?? true,
     },
@@ -71,6 +73,7 @@ export async function updatePlan(id: string, input: PlanInput) {
       dataAllowance: input.dataAllowance?.trim() || null,
       voiceMinutes: input.voiceMinutes?.trim() || null,
       smsCount: input.smsCount?.trim() || null,
+      commitment: input.commitment?.trim() || null,
       description: input.description?.trim() || null,
       isActive: input.isActive ?? true,
     },

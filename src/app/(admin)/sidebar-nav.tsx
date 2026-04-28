@@ -9,6 +9,7 @@ import {
   MessageCircle,
   Bot,
   UserCog,
+  Building2,
 } from "lucide-react";
 import {
   SidebarGroup,
@@ -28,6 +29,7 @@ const NAV = [
     label: "운영",
     items: [
       { href: "/applicants", label: "신청자 관리", icon: Users },
+      { href: "/partners", label: "거래처 관리", icon: Building2 },
       { href: "/plans", label: "요금제 관리", icon: Wifi },
       { href: "/chat", label: "채팅", icon: MessageCircle },
       { href: "/chatbot-flow", label: "챗봇 플로우", icon: Bot },

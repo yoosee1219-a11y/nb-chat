@@ -48,6 +48,7 @@ export default async function ApplicantDetailPage({
     where: { id },
     include: {
       appliedPlan: true,
+      sourcePartner: { select: { code: true, name: true } },
       rooms: { select: { id: true, unreadCount: true } },
       notes: {
         include: { manager: { select: { id: true, name: true } } },
@@ -152,6 +153,71 @@ export default async function ApplicantDetailPage({
                 <ConsentBadge label="개인정보 동의" ok={applicant.privacyConsent} />
                 <ConsentBadge label="제3자 동의" ok={applicant.thirdPartyConsent} />
               </div>
+            </CardContent>
+          </Card>
+
+          {/* 유입 정보 — Phase 5.4 */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">유입 정보</CardTitle>
+              <CardDescription>
+                어디서 들어온 신청자인지 추적 (정산/분석용)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <InfoRow
+                label="유입 거래처"
+                value={
+                  applicant.sourcePartner ? (
+                    <span className="inline-flex items-center gap-2">
+                      <Badge
+                        variant="outline"
+                        className={
+                          applicant.sourcePartner.code === "DIRECT"
+                            ? "bg-purple-100 text-purple-700 border-purple-200"
+                            : "bg-blue-100 text-blue-700 border-blue-200"
+                        }
+                      >
+                        {applicant.sourcePartner.code === "DIRECT"
+                          ? "자체광고"
+                          : applicant.sourcePartner.name}
+                      </Badge>
+                      <code className="text-[11px] text-muted-foreground">
+                        ({applicant.sourcePartner.code})
+                      </code>
+                    </span>
+                  ) : (
+                    "미상"
+                  )
+                }
+              />
+              <InfoRow
+                label="캠페인"
+                value={applicant.sourceCampaign ?? "-"}
+              />
+              <InfoRow label="매체" value={applicant.sourceMedium ?? "-"} />
+              <InfoRow
+                label="레퍼러 (랜딩 직전 URL)"
+                value={
+                  applicant.sourceReferrer ? (
+                    <span className="break-all text-xs">
+                      {applicant.sourceReferrer}
+                    </span>
+                  ) : (
+                    "-"
+                  )
+                }
+              />
+              <InfoRow
+                label="랜딩 시각"
+                value={
+                  applicant.sourceLandedAt
+                    ? format(applicant.sourceLandedAt, "yyyy.MM.dd HH:mm:ss", {
+                        locale: ko,
+                      })
+                    : "-"
+                }
+              />
             </CardContent>
           </Card>
 
@@ -270,16 +336,16 @@ function InfoRow({
   icon,
 }: {
   label: string;
-  value: string;
+  value: React.ReactNode;
   icon?: React.ReactNode;
 }) {
   return (
     <div className="flex items-center justify-between gap-4 text-sm">
-      <span className="flex items-center gap-2 text-muted-foreground">
+      <span className="flex items-center gap-2 text-muted-foreground shrink-0">
         {icon}
         {label}
       </span>
-      <span className="font-medium">{value}</span>
+      <span className="font-medium text-right">{value}</span>
     </div>
   );
 }

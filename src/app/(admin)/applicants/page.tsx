@@ -29,30 +29,38 @@ export default async function ApplicantsPage({
     q?: string;
     nationality?: string;
     status?: string;
+    partner?: string;
     page?: string;
   }>;
 }) {
-  const { q, nationality, status, page } = await searchParams;
+  const { q, nationality, status, partner, page } = await searchParams;
   const currentPage = Math.max(1, Number(page ?? "1") || 1);
 
   const where = {
     ...(q ? { name: { contains: q } } : {}),
     ...(nationality ? { nationality } : {}),
     ...(status ? { status } : {}),
+    ...(partner ? { sourcePartner: { code: partner } } : {}),
   };
 
-  const [applicants, total] = await Promise.all([
+  const [applicants, total, partners] = await Promise.all([
     prisma.applicant.findMany({
       where,
       include: {
         appliedPlan: { select: { name: true, monthlyFee: true } },
         rooms: { select: { unreadCount: true } },
+        sourcePartner: { select: { code: true, name: true } },
       },
       orderBy: { appliedAt: "desc" },
       take: PAGE_SIZE,
       skip: (currentPage - 1) * PAGE_SIZE,
     }),
     prisma.applicant.count({ where }),
+    prisma.partner.findMany({
+      where: { isActive: true },
+      orderBy: { createdAt: "asc" },
+      select: { code: true, name: true },
+    }),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -69,7 +77,7 @@ export default async function ApplicantsPage({
       />
 
       <div className="space-y-6">
-      <ApplicantSearchBar />
+      <ApplicantSearchBar partners={partners} />
 
       <Card>
         <CardHeader>
@@ -89,6 +97,7 @@ export default async function ApplicantsPage({
                   <TableHead>이름</TableHead>
                   <TableHead>국적</TableHead>
                   <TableHead>비자</TableHead>
+                  <TableHead>유입 거래처</TableHead>
                   <TableHead>연락처</TableHead>
                   <TableHead>신청 요금제</TableHead>
                   <TableHead>상태</TableHead>
@@ -125,6 +134,29 @@ export default async function ApplicantsPage({
                         {nat.label}
                       </TableCell>
                       <TableCell>{a.visa ?? "-"}</TableCell>
+                      <TableCell>
+                        {a.sourcePartner ? (
+                          <Badge
+                            variant="outline"
+                            className={
+                              a.sourcePartner.code === "DIRECT"
+                                ? "bg-purple-100 text-purple-700 border-purple-200"
+                                : "bg-blue-100 text-blue-700 border-blue-200"
+                            }
+                          >
+                            {a.sourcePartner.code === "DIRECT"
+                              ? "자체광고"
+                              : a.sourcePartner.name}
+                            {a.sourceCampaign && (
+                              <span className="ml-1 opacity-60">
+                                · {a.sourceCampaign}
+                              </span>
+                            )}
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">미상</span>
+                        )}
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {a.phone ?? "-"}
                       </TableCell>

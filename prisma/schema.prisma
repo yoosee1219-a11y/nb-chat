@@ -59,13 +59,23 @@ model Applicant {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
+  // 유입 추적 — Phase 5
+  // sourcePartnerId가 null이면 미상 (구버전 데이터). DIRECT는 별도 partner row.
+  sourcePartnerId String?
+  sourceCampaign  String?   // utm_campaign — 거래처 내 캠페인 분기
+  sourceMedium    String?   // utm_medium — banner / sms / qr / video / etc
+  sourceReferrer  String?   // HTTP referrer (랜딩 직전 URL)
+  sourceLandedAt  DateTime? // 랜딩 시각 (가입 전환 시간 측정)
+
   appliedPlan   Plan?           @relation(fields: [appliedPlanId], references: [id])
+  sourcePartner Partner?        @relation(fields: [sourcePartnerId], references: [id])
   rooms         ChatRoom[]
   notes         Note[]
   statusHistory StatusHistory[]
 
   @@index([status])
   @@index([nationality])
+  @@index([sourcePartnerId, appliedAt])
   @@map("applicants")
 }
 
@@ -81,6 +91,7 @@ model Plan {
   dataAllowance String?
   voiceMinutes  String?
   smsCount      String?
+  commitment    String?  // "12개월" / "24개월" / "약정 없음" — Phase 5.6
   description   String?
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
@@ -89,6 +100,29 @@ model Plan {
   applicants Applicant[]
 
   @@map("plans")
+}
+
+// ============================================
+// 거래처 (Partner) — 유입 채널 추적용 — Phase 5.1
+// 정산/수수료 로직은 의도적으로 제외 (이 시스템 범위 밖)
+// code:
+//   - URL slug: /r/[code]?campaign=xxx&medium=banner
+//   - 자동 생성(영문+숫자 짧은 코드) + 매니저가 수정 가능
+//   - "DIRECT"는 자체광고용 reserved slug — 시드에서 자동 생성
+// ============================================
+model Partner {
+  id        String   @id @default(cuid())
+  code      String   @unique
+  name      String
+  contact   String?
+  memo      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  applicants Applicant[]
+
+  @@map("partners")
 }
 
 // ============================================

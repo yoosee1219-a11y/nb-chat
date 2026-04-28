@@ -57,6 +57,7 @@ export default async function PlansPage() {
                   <TableHead>데이터</TableHead>
                   <TableHead>통화</TableHead>
                   <TableHead>SMS</TableHead>
+                  <TableHead>약정</TableHead>
                   <TableHead>신청자</TableHead>
                   <TableHead>상태</TableHead>
                   <TableHead>등록일</TableHead>
@@ -81,6 +82,9 @@ export default async function PlansPage() {
                     </TableCell>
                     <TableCell className="text-sm">
                       {p.smsCount ?? "-"}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {p.commitment ?? "-"}
                     </TableCell>
                     <TableCell>
                       <Badge variant="secondary">
@@ -118,6 +122,7 @@ export default async function PlansPage() {
                             dataAllowance: p.dataAllowance,
                             voiceMinutes: p.voiceMinutes,
                             smsCount: p.smsCount,
+                            commitment: p.commitment,
                             description: p.description,
                             isActive: p.isActive,
                           }}

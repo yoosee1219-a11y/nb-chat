@@ -34,6 +34,7 @@ export type ExistingPlan = {
   dataAllowance: string | null;
   voiceMinutes: string | null;
   smsCount: string | null;
+  commitment: string | null;
   description: string | null;
   isActive: boolean;
 };
@@ -49,6 +50,7 @@ export function PlanForm({ existing }: { existing?: ExistingPlan }) {
     dataAllowance: existing?.dataAllowance ?? "",
     voiceMinutes: existing?.voiceMinutes ?? "",
     smsCount: existing?.smsCount ?? "",
+    commitment: existing?.commitment ?? "",
     description: existing?.description ?? "",
     isActive: existing?.isActive ?? true,
   }));
@@ -171,6 +173,18 @@ export function PlanForm({ existing }: { existing?: ExistingPlan }) {
                 placeholder="무제한"
               />
             </div>
+          </div>
+
+          <div className="space-y-1">
+            <Label htmlFor="commitment">약정</Label>
+            <Input
+              id="commitment"
+              value={form.commitment ?? ""}
+              onChange={(e) =>
+                setForm({ ...form, commitment: e.target.value })
+              }
+              placeholder="12개월 / 24개월 / 약정 없음"
+            />
           </div>
 
           <div className="space-y-1">

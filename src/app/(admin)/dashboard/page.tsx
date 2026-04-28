@@ -28,6 +28,8 @@ export default async function DashboardPage() {
     unconfirmed,
     unrespondedRooms,
     byNationality,
+    bySource,
+    byCampaign,
   ] = await Promise.all([
     prisma.applicant.count(),
     prisma.applicant.count({ where: { status: "PENDING" } }),
@@ -41,7 +43,41 @@ export default async function DashboardPage() {
       _count: { _all: true },
       orderBy: { _count: { nationality: "desc" } },
     }),
+    prisma.applicant.groupBy({
+      by: ["sourcePartnerId"],
+      _count: { _all: true },
+    }),
+    prisma.applicant.groupBy({
+      by: ["sourceCampaign"],
+      where: { sourceCampaign: { not: null } },
+      _count: { _all: true },
+      orderBy: { _count: { sourceCampaign: "desc" } },
+      take: 8,
+    }),
   ]);
+
+  // 거래처 메타 조회 후 합치기
+  const partnerIds = bySource
+    .map((r) => r.sourcePartnerId)
+    .filter((id): id is string => !!id);
+  const partnerRows = partnerIds.length
+    ? await prisma.partner.findMany({
+        where: { id: { in: partnerIds } },
+        select: { id: true, code: true, name: true },
+      })
+    : [];
+  const partnerMap = new Map(partnerRows.map((p) => [p.id, p]));
+  const sourceData = bySource
+    .map((r) => {
+      const p = r.sourcePartnerId ? partnerMap.get(r.sourcePartnerId) : null;
+      const label = p
+        ? p.code === "DIRECT"
+          ? "자체광고"
+          : p.name
+        : "미상";
+      return { label, code: p?.code ?? "UNKNOWN", count: r._count._all };
+    })
+    .sort((a, b) => b.count - a.count);
 
   const stats: KpiStat[] = [
     {
@@ -157,6 +193,82 @@ export default async function DashboardPage() {
                     </Badge>
                   );
                 })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 유입 채널 통계 — Phase 5.5 */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">거래처별 유입</CardTitle>
+            <CardDescription className="text-xs">
+              어디서 들어온 신청자인지 (전체 누적)
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {sourceData.length === 0 ? (
+              <p className="text-sm text-muted-foreground">데이터 없음</p>
+            ) : (
+              <div className="space-y-2">
+                {sourceData.map((row) => {
+                  const max = Math.max(...sourceData.map((r) => r.count), 1);
+                  const pct = (row.count / max) * 100;
+                  const tone =
+                    row.code === "DIRECT"
+                      ? "bg-purple-500"
+                      : row.code === "UNKNOWN"
+                        ? "bg-gray-400"
+                        : "bg-blue-500";
+                  return (
+                    <div key={row.code} className="space-y-1">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="font-medium">{row.label}</span>
+                        <span className="text-muted-foreground">
+                          {row.count}명
+                        </span>
+                      </div>
+                      <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                        <div
+                          className={`h-full ${tone}`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">캠페인 TOP 8</CardTitle>
+            <CardDescription className="text-xs">
+              UTM 캠페인별 신청자 수
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {byCampaign.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                캠페인 정보가 있는 신청자가 없습니다.
+              </p>
+            ) : (
+              <div className="space-y-1.5">
+                {byCampaign.map((row) => (
+                  <div
+                    key={row.sourceCampaign ?? "_"}
+                    className="flex items-center justify-between rounded-md bg-muted/40 px-3 py-1.5 text-xs"
+                  >
+                    <code className="truncate font-mono">
+                      {row.sourceCampaign}
+                    </code>
+                    <Badge variant="secondary">{row._count._all}명</Badge>
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>
