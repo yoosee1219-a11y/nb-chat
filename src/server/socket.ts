@@ -92,7 +92,7 @@ chatNs.use(async (socket, next) => {
   try {
     // 1차: 쿠키 (매니저 same-site)
     const cookies = parseCookieHeader(socket.handshake.headers.cookie);
-    let token = cookies[SESSION_COOKIE];
+    let token: string | undefined = cookies[SESSION_COOKIE];
 
     // 2차: handshake.auth (신청자 룸 토큰 / cross-site 매니저)
     if (!token) {
@@ -332,7 +332,8 @@ chatNs.on("connection", (socket) => {
       const senderType: "MANAGER" | "APPLICANT" = isManager
         ? "MANAGER"
         : "APPLICANT";
-      const senderId = isManager ? socket.data.managerId : null;
+      const senderId =
+        socket.data.kind === "manager" ? socket.data.managerId : null;
 
       // 번역은 텍스트만. IMAGE/FILE은 caption(text)이 있을 때만.
       const targetLang = isManager ? peerLang : "KO_KR";

@@ -30,7 +30,8 @@ export function DeletePlanButton({ id, name }: { id: string; name: string }) {
             : "삭제 완료"
         );
       } else {
-        toast.error(res.error);
+        const errMsg = "error" in res ? res.error : "삭제 실패";
+        toast.error(errMsg);
       }
     });
   }

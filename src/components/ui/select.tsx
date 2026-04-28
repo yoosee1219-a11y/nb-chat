@@ -6,7 +6,30 @@ import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "@/lib/utils"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
-const Select = SelectPrimitive.Root
+// base-ui SelectPrimitive.Root는 onValueChange가 (value: string | null) 시그니처.
+// 우리 사용 패턴은 항상 value가 있는 상태라 null을 wrapper에서 걸러서
+// 호출처가 (value: string) => void 만 받도록 좁힘.
+type BaseSelectProps = React.ComponentProps<typeof SelectPrimitive.Root>
+type SelectProps = Omit<BaseSelectProps, "onValueChange"> & {
+  onValueChange?: (value: string) => void
+}
+
+function Select({ onValueChange, ...props }: SelectProps) {
+  return (
+    <SelectPrimitive.Root
+      {...props}
+      onValueChange={
+        onValueChange
+          ? (value) => {
+              if (value !== null && value !== undefined) {
+                onValueChange(String(value))
+              }
+            }
+          : undefined
+      }
+    />
+  )
+}
 
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (

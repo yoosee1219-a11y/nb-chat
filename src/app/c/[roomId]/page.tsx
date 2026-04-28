@@ -56,6 +56,7 @@ export default async function CustomerChatPage({
           originalText: true,
           language: true,
           translatedText: true,
+          attachments: true,
           createdAt: true,
         },
       },

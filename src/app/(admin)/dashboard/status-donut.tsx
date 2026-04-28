@@ -62,7 +62,7 @@ export function StatusDonut({
               border: "1px solid var(--color-border)",
               fontSize: "12px",
             }}
-            formatter={(v: number) => [`${v}건`, ""]}
+            formatter={(v) => [`${Number(v) || 0}건`, ""] as [string, string]}
           />
         </PieChart>
       </ResponsiveContainer>

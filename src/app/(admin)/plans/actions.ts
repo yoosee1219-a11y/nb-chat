@@ -93,6 +93,12 @@ export async function updatePlan(id: string, input: PlanInput) {
 export async function deletePlan(id: string) {
   const session = await requireSession();
 
+  const exists = await prisma.plan.findUnique({
+    where: { id },
+    select: { id: true },
+  });
+  if (!exists) return { ok: false as const, error: "요금제를 찾을 수 없습니다." };
+
   // 사용 중인 요금제는 삭제 대신 비활성화
   const usedBy = await prisma.applicant.count({
     where: { appliedPlanId: id },

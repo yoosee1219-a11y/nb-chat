@@ -26,8 +26,8 @@ export function StatusChange({
   const [isPending, startTransition] = useTransition();
   const [status, setStatus] = useState(currentStatus);
 
-  function handleChange(value: string) {
-    if (value === status) return;
+  function handleChange(value: string | null) {
+    if (!value || value === status) return;
     const prev = status;
     setStatus(value); // 옵티미스틱
 

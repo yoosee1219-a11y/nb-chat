@@ -12,6 +12,8 @@ import {
   type Node,
   type Edge,
   type Connection,
+  type NodeChange,
+  type EdgeChange,
   type ReactFlowInstance,
   type OnSelectionChangeParams,
   MarkerType,
@@ -303,7 +305,7 @@ export function FlowCanvas({
         edges={edges}
         nodeTypes={nodeTypes}
         onNodesChange={(c) => {
-          onNodesChange(c);
+          onNodesChange(c as NodeChange<FlowNode>[]);
           // dimensions(자동 측정) / select(클릭 선택)는 dirty가 아님 — 사용자 의도적 변경만 dirty
           const meaningful = c.some(
             (ch) => ch.type !== "dimensions" && ch.type !== "select"
@@ -311,7 +313,7 @@ export function FlowCanvas({
           if (meaningful) setDirty(true);
         }}
         onEdgesChange={(c) => {
-          onEdgesChange(c);
+          onEdgesChange(c as EdgeChange<Edge>[]);
           const meaningful = c.some((ch) => ch.type !== "select");
           if (meaningful) setDirty(true);
         }}
