@@ -1,23 +1,29 @@
 /**
- * Standalone Socket.IO 서버 (Phase 3.2)
+ * Standalone Socket.IO 서버 — Phase 4.4
  *
  * 실행: npm run dev:socket
  *
- * 확장성 포인트:
- *  1. namespace `/chat` — 멀티테넌트 시 `/${tenant}-chat` 으로 변경
- *  2. adapter — REDIS_URL 환경변수 있으면 @socket.io/redis-adapter 자동 사용 (멀티노드)
- *  3. 번역 — lib/translation.ts 인터페이스로 위임 (현재 mock, Phase 3.4에서 Google v3)
- *  4. 메시지 저장 — 직접 broadcast (Phase 3.3에서 Outbox + BullMQ로 교체 가능한 구조)
- *  5. 인증 — Next 프로세스가 발급한 JWT(jose, AUTH_SECRET 공유)를 핸드셰이크에서 검증
+ * 변경점 (Phase 4.4):
+ *  - 신청자(APPLICANT) 핸드셰이크 추가 — 룸-바운드 토큰
+ *  - APPLICANT 메시지 발신 + 자동번역 (KO 매니저용)
+ *  - 첫 APPLICANT 메시지에 대해 PUBLISHED 챗봇 플로우 자동 실행
+ *  - 챗봇 emit 메시지를 SYSTEM senderType으로 저장 + broadcast
+ *
+ * 확장성:
+ *  1. namespace `/chat` (멀티테넌트는 `/${tenant}-chat` 으로)
+ *  2. REDIS_URL 있으면 redis-adapter (멀티노드 broadcast)
+ *  3. 번역/LLM은 lib/translation, lib/llm 어댑터로 위임
+ *  4. 인증은 lib/socket-auth로 분리 (Next + standalone 공유)
  */
 
 import "dotenv/config";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
-import { jwtVerify } from "jose";
 import { PrismaClient } from "../generated/prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { translateForPeer } from "../lib/translation";
+import { verifyAnyToken } from "../lib/socket-auth";
+import { executeFlow, type ApplicantContext } from "../lib/flow-runtime";
 import {
   CHAT_NAMESPACE,
   type ChatMessageEvent,
@@ -26,6 +32,8 @@ import {
   type SendMessageInput,
   type SocketData,
 } from "../lib/socket-types";
+import type { Edge, Node } from "@xyflow/react";
+import type { AnyNodeData } from "../app/(admin)/chatbot-flow/[id]/node-types";
 
 const PORT = Number(process.env.SOCKET_PORT ?? 4001);
 const ALLOWED_ORIGINS = (
@@ -43,7 +51,6 @@ if (!process.env.DATABASE_URL) {
 
 const SECRET = new TextEncoder().encode(process.env.AUTH_SECRET);
 
-// ─── Prisma (이 프로세스 전용 인스턴스) ──────────────────────────
 const prisma = new PrismaClient({
   adapter: new PrismaBetterSqlite3({ url: process.env.DATABASE_URL }),
   log: ["error", "warn"],
@@ -61,24 +68,12 @@ const io = new Server<
   Record<string, never>,
   SocketData
 >(httpServer, {
-  cors: {
-    origin: ALLOWED_ORIGINS,
-    credentials: true,
-  },
-  // 추후 Redis adapter 자리:
-  // if (process.env.REDIS_URL) {
-  //   const pubClient = createClient({ url: process.env.REDIS_URL });
-  //   const subClient = pubClient.duplicate();
-  //   await Promise.all([pubClient.connect(), subClient.connect()]);
-  //   io.adapter(createAdapter(pubClient, subClient));
-  // }
+  cors: { origin: ALLOWED_ORIGINS, credentials: true },
 });
 
 const chatNs = io.of(CHAT_NAMESPACE);
 
 // ─── 인증 미들웨어 ──────────────────────────────────────────────
-// Next 프로세스가 발급한 fics_session 쿠키를 핸드셰이크에서 가져와 jose로 검증.
-// 추후 cross-site 배포 시 별도 토큰 엔드포인트로 갈아끼울 수 있게 분리.
 const SESSION_COOKIE = "fics_session";
 
 function parseCookieHeader(header: string | undefined): Record<string, string> {
@@ -95,27 +90,21 @@ function parseCookieHeader(header: string | undefined): Record<string, string> {
 
 chatNs.use(async (socket, next) => {
   try {
-    // 1차: 쿠키에서 시도 (same-site)
+    // 1차: 쿠키 (매니저 same-site)
     const cookies = parseCookieHeader(socket.handshake.headers.cookie);
     let token = cookies[SESSION_COOKIE];
 
-    // 2차: handshake.auth.token (cross-site/네이티브 클라용 — 추후 사용)
+    // 2차: handshake.auth (신청자 룸 토큰 / cross-site 매니저)
     if (!token) {
       const auth = socket.handshake.auth as { token?: string };
       token = auth?.token;
     }
     if (!token) return next(new Error("UNAUTHENTICATED"));
 
-    const { payload } = await jwtVerify(token, SECRET);
-    const managerId = payload.managerId as string | undefined;
-    const email = payload.email as string | undefined;
-    const role = payload.role as string | undefined;
+    const claim = await verifyAnyToken(token, SECRET);
+    if (!claim) return next(new Error("INVALID_TOKEN"));
 
-    if (!managerId || !email || !role) {
-      return next(new Error("INVALID_TOKEN_PAYLOAD"));
-    }
-
-    socket.data = { managerId, email, role };
+    socket.data = claim as SocketData;
     next();
   } catch {
     next(new Error("INVALID_TOKEN"));
@@ -127,27 +116,140 @@ const roomKey = (roomId: string) => `room:${roomId}`;
 
 async function canAccessRoom(
   roomId: string,
-  managerId: string,
-  role: string
+  data: SocketData
 ): Promise<boolean> {
-  if (role === "ADMIN") return true;
+  if (data.kind === "applicant") {
+    return data.roomId === roomId; // 룸-바운드
+  }
+  // manager
+  if (data.role === "ADMIN") return true;
   const room = await prisma.chatRoom.findUnique({
     where: { id: roomId },
     select: { managerId: true },
   });
   if (!room) return false;
-  return room.managerId === null || room.managerId === managerId;
+  return room.managerId === null || room.managerId === data.managerId;
+}
+
+// ─── 챗봇 트리거 ─────────────────────────────────────────────────
+// 신청자 메시지가 들어왔을 때, PUBLISHED 챗봇 플로우 1개를 가져와 실행한다.
+// MVP 정책: 룸의 messages 수 ≤ 1 (방금 들어온 첫 메시지 1건뿐) 일 때만 트리거.
+//   → 사람 매니저가 합류한 뒤엔 자동 응답 안 함. 단순/예측가능.
+async function maybeRunChatbot(input: {
+  roomId: string;
+  applicantId: string;
+  applicantMessage: string;
+  applicantLanguage: string;
+}) {
+  // 메시지 수 1 (방금 저장된 신청자 첫 메시지 1건)
+  const msgCount = await prisma.message.count({
+    where: { roomId: input.roomId },
+  });
+  if (msgCount > 1) return;
+
+  const flow = await prisma.chatbotFlow.findFirst({
+    where: { status: "PUBLISHED" },
+    orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      nodesData: true,
+      edgesData: true,
+    },
+  });
+  if (!flow) {
+    console.log("[chatbot] no PUBLISHED flow — skipping");
+    return;
+  }
+
+  let nodes: Node<AnyNodeData>[];
+  let edges: Edge[];
+  try {
+    nodes = JSON.parse(flow.nodesData);
+    edges = JSON.parse(flow.edgesData);
+  } catch (e) {
+    console.error("[chatbot] flow JSON parse failed", flow.id, e);
+    return;
+  }
+
+  const applicant = await prisma.applicant.findUnique({
+    where: { id: input.applicantId },
+    select: { name: true, nationality: true, status: true },
+  });
+
+  const ctx: ApplicantContext = {
+    name: applicant?.name ?? "",
+    language: input.applicantLanguage,
+    nationality: applicant?.nationality ?? "",
+    status: applicant?.status ?? undefined,
+    message: input.applicantMessage,
+  };
+
+  let result;
+  try {
+    result = await executeFlow(nodes, edges, ctx);
+  } catch (e) {
+    console.error("[chatbot] executeFlow threw", e);
+    return;
+  }
+
+  // emit된 메시지를 DB에 저장 + broadcast (senderType=SYSTEM)
+  for (const msg of result.emittedMessages) {
+    const created = await prisma.message.create({
+      data: {
+        roomId: input.roomId,
+        senderType: "SYSTEM",
+        senderId: null,
+        type: "TEXT",
+        originalText: msg.text,
+        language: msg.sourceLanguage,
+        translatedText: msg.translatedText,
+        isRead: false,
+      },
+    });
+    await prisma.chatRoom.update({
+      where: { id: input.roomId },
+      data: { lastMessageAt: created.createdAt },
+    });
+    chatNs.to(roomKey(input.roomId)).emit("chat:message", {
+      id: created.id,
+      roomId: created.roomId,
+      senderType: "SYSTEM",
+      senderId: null,
+      type: "TEXT",
+      originalText: created.originalText,
+      language: created.language,
+      translatedText: created.translatedText,
+      createdAt: created.createdAt.toISOString(),
+    });
+  }
+
+  // 사람 인계 — 룸의 managerId를 null로 두고 unread만 올림
+  // (매니저가 픽업하는 정책은 추후 큐 도입 시 정교화)
+  if (result.terminatedBy === "escalated") {
+    await prisma.chatRoom.update({
+      where: { id: input.roomId },
+      data: {
+        unreadCount: { increment: 1 },
+      },
+    });
+  }
+
+  console.log(
+    `[chatbot] flow=${flow.id} term=${result.terminatedBy} steps=${result.steps.length} emit=${result.emittedMessages.length}`
+  );
 }
 
 // ─── 핸들러 ──────────────────────────────────────────────────────
 chatNs.on("connection", (socket) => {
-  const { managerId, email } = socket.data;
-  console.log(`[socket] connect ${email} (${socket.id})`);
+  const label =
+    socket.data.kind === "manager"
+      ? socket.data.email
+      : `applicant:${socket.data.applicantId}`;
+  console.log(`[socket] connect ${label} (${socket.id})`);
 
-  // ── subscribe ─────────────────────────────────────────────────
   socket.on("chat:subscribe", async ({ roomId }, ack) => {
     try {
-      const allowed = await canAccessRoom(roomId, managerId, socket.data.role);
+      const allowed = await canAccessRoom(roomId, socket.data);
       if (!allowed) return ack({ ok: false, error: "FORBIDDEN" });
       await socket.join(roomKey(roomId));
       ack({ ok: true });
@@ -157,74 +259,76 @@ chatNs.on("connection", (socket) => {
     }
   });
 
-  // ── unsubscribe ──────────────────────────────────────────────
   socket.on("chat:unsubscribe", async ({ roomId }) => {
     await socket.leave(roomKey(roomId));
   });
 
-  // ── send ─────────────────────────────────────────────────────
   socket.on("chat:send", async (input: SendMessageInput, ack) => {
     try {
-      // 1) 입력 검증
       if (input.type !== "TEXT") {
-        return ack({ ok: false, error: "ONLY_TEXT_SUPPORTED_IN_PHASE_3_2" });
+        return ack({ ok: false, error: "ONLY_TEXT_SUPPORTED" });
       }
       const text = input.originalText?.trim();
       if (!text) return ack({ ok: false, error: "EMPTY_TEXT" });
       if (text.length > 4000) return ack({ ok: false, error: "TOO_LONG" });
 
-      // 2) 권한 + 룸 + 신청자 언어 동시 페치
+      // 권한 + 룸 페치
       const room = await prisma.chatRoom.findUnique({
         where: { id: input.roomId },
         include: {
-          applicant: { select: { preferredLanguage: true } },
+          applicant: { select: { id: true, preferredLanguage: true } },
         },
       });
       if (!room) return ack({ ok: false, error: "ROOM_NOT_FOUND" });
-      if (
-        socket.data.role !== "ADMIN" &&
-        room.managerId !== null &&
-        room.managerId !== managerId
-      ) {
-        return ack({ ok: false, error: "FORBIDDEN" });
-      }
 
-      // 3) 번역 (mock — Phase 3.4에서 실제 API)
+      const allowed = await canAccessRoom(input.roomId, socket.data);
+      if (!allowed) return ack({ ok: false, error: "FORBIDDEN" });
+
       const peerLang = room.applicant.preferredLanguage;
+      const isManager = socket.data.kind === "manager";
+      const senderType: "MANAGER" | "APPLICANT" = isManager
+        ? "MANAGER"
+        : "APPLICANT";
+      const senderId = isManager ? socket.data.managerId : null;
+
+      // 번역 — 발신자 언어 → 상대 언어
+      // 매니저(KO) → 신청자(peer) / 신청자(peer) → 매니저(KO)
+      const targetLang = isManager ? peerLang : "KO_KR";
       const { translatedText } = await translateForPeer(
         text,
         input.language,
-        peerLang
+        targetLang
       );
 
-      // 4) DB 저장 + 룸 갱신
-      // (Phase 3.3에서 Outbox row를 같은 트랜잭션에 추가 → 워커가 broadcast)
       const created = await prisma.$transaction(async (tx) => {
         const message = await tx.message.create({
           data: {
             roomId: input.roomId,
-            senderType: "MANAGER",
-            senderId: managerId,
+            senderType,
+            senderId,
             type: "TEXT",
             originalText: text,
             language: input.language,
             translatedText,
-            isRead: true, // 매니저 본인 발신 → 매니저 측 읽음
+            isRead: isManager, // 매니저 발신 → 매니저 측 읽음
           },
         });
         const updated = await tx.chatRoom.update({
           where: { id: input.roomId },
-          data: { lastMessageAt: message.createdAt },
+          data: {
+            lastMessageAt: message.createdAt,
+            // 신청자 발신이면 매니저용 unread 증가
+            unreadCount: isManager ? undefined : { increment: 1 },
+          },
         });
         return { message, room: updated };
       });
 
-      // 5) broadcast (현재는 직접. 추후 Outbox 워커에서 발화)
       const event: ChatMessageEvent = {
         id: created.message.id,
         roomId: created.message.roomId,
-        senderType: "MANAGER",
-        senderId: managerId,
+        senderType,
+        senderId,
         type: "TEXT",
         originalText: created.message.originalText,
         language: created.message.language,
@@ -240,6 +344,17 @@ chatNs.on("connection", (socket) => {
       });
 
       ack({ ok: true, data: { messageId: created.message.id } });
+
+      // 챗봇 트리거 — 신청자 발신 + 첫 메시지일 때만
+      if (!isManager) {
+        // 비동기 실행 — ack가 늦어지지 않도록 fire-and-forget
+        maybeRunChatbot({
+          roomId: input.roomId,
+          applicantId: room.applicant.id,
+          applicantMessage: text,
+          applicantLanguage: input.language,
+        }).catch((e) => console.error("[chatbot] background error", e));
+      }
     } catch (err) {
       console.error("[chat:send] error", err);
       ack({ ok: false, error: "INTERNAL_ERROR" });
@@ -247,21 +362,20 @@ chatNs.on("connection", (socket) => {
   });
 
   socket.on("disconnect", (reason) => {
-    console.log(`[socket] disconnect ${email} — ${reason}`);
+    console.log(`[socket] disconnect ${label} — ${reason}`);
   });
 });
 
-// ─── start ──────────────────────────────────────────────────────
 httpServer.listen(PORT, () => {
   console.log(
     `✓ NB Chat socket server: http://localhost:${PORT} (ns=${CHAT_NAMESPACE})`
   );
   console.log(`  AUTH_SECRET: set (${process.env.AUTH_SECRET!.length} chars)`);
   console.log(`  CORS: ${ALLOWED_ORIGINS.join(", ")}`);
-  console.log(`  REDIS: ${process.env.REDIS_URL ? "configured" : "in-memory"}`);
+  console.log(`  TRANSLATE: ${process.env.GOOGLE_TRANSLATE_API_KEY ? "google v2" : "mock"}`);
+  console.log(`  LLM: ${process.env.ANTHROPIC_API_KEY ? "anthropic" : process.env.OPENAI_API_KEY ? "openai" : "mock"}`);
 });
 
-// ─── graceful shutdown ──────────────────────────────────────────
 async function shutdown(signal: string) {
   console.log(`\n[${signal}] shutting down...`);
   io.close();

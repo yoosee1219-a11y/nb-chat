@@ -147,3 +147,42 @@ export async function verifySessionToken(
 }
 
 export const SESSION_COOKIE_NAME = COOKIE_NAME;
+
+// ─── 신청자 룸 토큰 (Phase 4.4) ────────────────────────────────────
+// 고객 URL `/c/[roomId]` 진입 시 서버 컴포넌트에서 발급.
+// 소켓 핸드셰이크에서 검증. 룸-바운드 — 다른 룸 접근 불가.
+export type ApplicantTokenPayload = {
+  kind: "applicant";
+  roomId: string;
+  applicantId: string;
+  language: string;
+};
+
+const APPLICANT_TOKEN_TTL = 60 * 60 * 24; // 24h
+
+export async function signApplicantToken(
+  payload: Omit<ApplicantTokenPayload, "kind">
+): Promise<string> {
+  return new SignJWT({ ...payload, kind: "applicant" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${APPLICANT_TOKEN_TTL}s`)
+    .sign(getSecret());
+}
+
+export async function verifyApplicantToken(
+  token: string
+): Promise<ApplicantTokenPayload | null> {
+  try {
+    const { payload } = await jwtVerify(token, getSecret());
+    if (payload.kind !== "applicant") return null;
+    return {
+      kind: "applicant",
+      roomId: payload.roomId as string,
+      applicantId: payload.applicantId as string,
+      language: payload.language as string,
+    };
+  } catch {
+    return null;
+  }
+}

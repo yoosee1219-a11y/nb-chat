@@ -28,10 +28,10 @@ import {
   NATIONALITY,
 } from "@/lib/constants";
 import {
-  executeFlow,
   type ApplicantContext,
   type FlowExecutionResult,
 } from "@/lib/flow-runtime";
+import { simulateFlow } from "../actions";
 import type { AnyNodeData } from "./node-types";
 
 const TERMINATION_LABEL: Record<
@@ -87,15 +87,24 @@ export function FlowSimulator({
   const [result, setResult] = useState<FlowExecutionResult | null>(null);
   const [running, setRunning] = useState(false);
 
-  function run() {
+  async function run() {
     setRunning(true);
-    // 클라이언트 사이드 실행 (mock LLM/번역이라 외부 호출 없음)
-    setTimeout(() => {
-      const r = executeFlow(nodes, edges, ctx);
+    try {
+      const r = await simulateFlow({ nodes, edges }, ctx);
       setResult(r);
       onTraceChange?.(r.steps.map((s) => s.nodeId));
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      setResult({
+        ok: false,
+        steps: [],
+        terminatedBy: "error",
+        error: message,
+        emittedMessages: [],
+      });
+    } finally {
       setRunning(false);
-    }, 200);
+    }
   }
 
   function reset() {

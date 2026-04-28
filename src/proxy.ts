@@ -15,6 +15,9 @@ import { jwtVerify } from "jose";
 
 const PUBLIC_PATHS = ["/login", "/api/health"];
 
+// 정확 prefix 매칭 — 고객(신청자) 경로는 별도 룸-바운드 토큰으로 보호
+const PUBLIC_PREFIXES = ["/c/"];
+
 const getSecret = () => {
   const secret = process.env.AUTH_SECRET;
   if (!secret) throw new Error("AUTH_SECRET not set");
@@ -26,6 +29,9 @@ export async function proxy(req: NextRequest) {
 
   // 공개 경로
   if (PUBLIC_PATHS.includes(pathname)) {
+    return NextResponse.next();
+  }
+  if (PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return NextResponse.next();
   }
 

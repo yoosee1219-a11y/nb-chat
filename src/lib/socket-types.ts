@@ -55,16 +55,24 @@ export type RoomUpdatedEvent = {
   unreadCount: number;
 };
 
-// 서버에 attach되는 socket.data 형태
-export interface SocketData {
-  managerId: string;
-  email: string;
-  role: string;
-}
+// 서버에 attach되는 socket.data 형태 (discriminated union)
+export type SocketData =
+  | {
+      kind: "manager";
+      managerId: string;
+      email: string;
+      role: string;
+    }
+  | {
+      kind: "applicant";
+      applicantId: string;
+      roomId: string;
+      language: string;
+    };
 
 // 클라이언트가 인증 시 전달하는 핸드셰이크
 export type SocketHandshakeAuth = {
-  token: string; // 서버 컴포넌트에서 발급한 ws_token
+  token: string; // 매니저 세션 토큰 또는 신청자 룸 토큰
 };
 
 export const CHAT_NAMESPACE = "/chat";

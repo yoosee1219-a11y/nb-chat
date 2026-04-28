@@ -2,9 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import type { Edge, Node } from "@xyflow/react";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
+import {
+  executeFlow,
+  type ApplicantContext,
+  type FlowExecutionResult,
+} from "@/lib/flow-runtime";
+import type { AnyNodeData } from "./[id]/node-types";
 
 const VALID_STATUS = ["DRAFT", "PUBLISHED", "ARCHIVED"] as const;
 export type FlowStatus = (typeof VALID_STATUS)[number];
@@ -123,4 +130,16 @@ export async function deleteFlow(id: string) {
 
   revalidatePath("/chatbot-flow");
   return { ok: true };
+}
+
+/**
+ * 시뮬레이터에서 호출 — 실 LLM/번역 API를 거치므로 반드시 서버에서 실행.
+ * (API 키가 클라이언트에 절대 노출되지 않도록)
+ */
+export async function simulateFlow(
+  graph: { nodes: Node<AnyNodeData>[]; edges: Edge[] },
+  ctx: ApplicantContext
+): Promise<FlowExecutionResult> {
+  await requireSession();
+  return executeFlow(graph.nodes, graph.edges, ctx);
 }

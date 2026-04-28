@@ -10,6 +10,7 @@ import {
   Mail,
   Calendar,
 } from "lucide-react";
+import { CustomerLinkButton } from "./customer-link-button";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -46,6 +47,7 @@ type SidePanelProps = {
 export function ApplicantSidePanel({
   applicant,
   appliedPlan,
+  roomId,
 }: SidePanelProps) {
   const nat = NATIONALITY[applicant.nationality];
   const lang = LANGUAGE[applicant.preferredLanguage];
@@ -53,8 +55,9 @@ export function ApplicantSidePanel({
 
   return (
     <aside className="flex h-full w-full flex-col border-l bg-background">
-      <div className="border-b p-3">
+      <div className="flex items-center justify-between border-b p-3">
         <h3 className="text-sm font-semibold">상담 정보</h3>
+        <CustomerLinkButton roomId={roomId} />
       </div>
 
       <div className="flex-1 overflow-y-auto">

@@ -22,6 +22,8 @@ import type {
   TranslateNodeData,
   EscalateNodeData,
 } from "@/app/(admin)/chatbot-flow/[id]/node-types";
+import { getTranslator } from "./translation";
+import { getLLMClient } from "./llm";
 
 // ─── 신청자 컨텍스트 ──────────────────────────────
 export type ApplicantContext = {
@@ -159,18 +161,18 @@ function nextNodeId(
   return null;
 }
 
-// ─── 노드 타입별 mock 핸들러 ─────────────────────
-function executeMessage(
+// ─── 노드 타입별 핸들러 (Phase 3.4: 실 API 연동) ─────────────────
+async function executeMessage(
   data: MessageNodeData,
   ctx: ApplicantContext
-): FlowStep["emittedMessage"] {
+): Promise<NonNullable<FlowStep["emittedMessage"]>> {
   const text = substituteVariables(data.text, ctx);
-  // Phase 3.4에서 translateForPeer로 실제 번역. 지금은 mock.
-  const translatedText =
-    data.language === ctx.language
-      ? text
-      : `[mock→${ctx.language.toLowerCase().replace("_", "-")}] ${text}`;
-
+  const translator = getTranslator();
+  const { translatedText } = await translator.translate({
+    text,
+    sourceLanguage: data.language,
+    targetLanguage: ctx.language,
+  });
   return {
     text,
     translatedText,
@@ -179,18 +181,27 @@ function executeMessage(
   };
 }
 
-function executeLLM(data: LLMNodeData, ctx: ApplicantContext): string {
+async function executeLLM(
+  data: LLMNodeData,
+  ctx: ApplicantContext
+): Promise<string> {
   const userMsg = substituteVariables(data.userTemplate, ctx);
-  // Phase 3.4에서 실제 LLM 호출. 지금은 mock 응답.
-  return `[mock LLM ${data.model}] systemPrompt+"${userMsg.slice(0, 60)}..." → "안녕하세요, NB Chat 챗봇입니다. 도와드리겠습니다."`;
+  const systemPrompt = substituteVariables(data.systemPrompt, ctx);
+  const llm = getLLMClient(data.model);
+  const { text } = await llm.complete({
+    systemPrompt,
+    userMessage: userMsg,
+    model: data.model,
+  });
+  return text;
 }
 
 // ─── 메인 실행 함수 ───────────────────────────────
-export function executeFlow(
+export async function executeFlow(
   nodes: Node<AnyNodeData>[],
   edges: Edge[],
   ctx: ApplicantContext
-): FlowExecutionResult {
+): Promise<FlowExecutionResult> {
   const steps: FlowStep[] = [];
   const emittedMessages: FlowExecutionResult["emittedMessages"] = [];
 
@@ -248,14 +259,14 @@ export function executeFlow(
 
     if (kind === "message") {
       const data = node.data as MessageNodeData;
-      const emitted = executeMessage(data, ctx);
+      const emitted = await executeMessage(data, ctx);
       steps.push({
         nodeId: node.id,
         kind,
-        output: emitted!.text,
+        output: emitted.text,
         emittedMessage: emitted,
       });
-      if (emitted) emittedMessages.push(emitted);
+      emittedMessages.push(emitted);
       currentId = nextNodeId(edges, node.id);
     } else if (kind === "condition") {
       const data = node.data as ConditionNodeData;
@@ -270,15 +281,17 @@ export function executeFlow(
       currentId = nextNodeId(edges, node.id, result ? "true" : "false");
     } else if (kind === "llm") {
       const data = node.data as LLMNodeData;
-      const response = executeLLM(data, ctx);
-      // LLM 응답을 신청자에게 발송 (mock)
-      const targetText =
-        ctx.language === "KO_KR"
-          ? response
-          : `[mock→${ctx.language.toLowerCase().replace("_", "-")}] ${response}`;
+      const response = await executeLLM(data, ctx);
+      // LLM 응답(한국어 가정)을 신청자 언어로 번역해 emit
+      const translator = getTranslator();
+      const { translatedText } = await translator.translate({
+        text: response,
+        sourceLanguage: "KO_KR",
+        targetLanguage: ctx.language,
+      });
       const emitted = {
         text: response,
-        translatedText: targetText,
+        translatedText,
         sourceLanguage: "KO_KR",
         targetLanguage: ctx.language,
       };
@@ -293,16 +306,17 @@ export function executeFlow(
     } else if (kind === "translate") {
       const data = node.data as TranslateNodeData;
       const target = data.targetLanguage || ctx.language;
-      // Phase 3.4에서 이전 step output을 실제 번역. 지금은 라벨링만.
       const prevOutput = steps[steps.length - 1]?.output ?? "";
-      const translated =
-        target === "KO_KR"
-          ? prevOutput
-          : `[mock→${target.toLowerCase().replace("_", "-")}] ${prevOutput}`;
+      const translator = getTranslator();
+      const { translatedText } = await translator.translate({
+        text: prevOutput,
+        sourceLanguage: "KO_KR",
+        targetLanguage: target,
+      });
       steps.push({
         nodeId: node.id,
         kind,
-        output: translated,
+        output: translatedText,
         note: `→ ${target}`,
       });
       currentId = nextNodeId(edges, node.id);
