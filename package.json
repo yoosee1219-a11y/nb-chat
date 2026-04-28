@@ -5,10 +5,11 @@
   "scripts": {
     "dev": "next dev",
     "dev:socket": "tsx watch src/server/socket.ts",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "start:socket": "tsx src/server/socket.ts",
     "seed": "tsx prisma/seed.ts",
+    "postinstall": "prisma generate",
     "lint": "eslint"
   },
   "dependencies": {
