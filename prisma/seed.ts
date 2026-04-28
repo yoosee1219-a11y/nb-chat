@@ -429,6 +429,132 @@ async function main() {
   }
   console.log(`  ✓ 메시지 ${totalMsgs}건 생성 (자동번역 패턴 포함)`);
 
+  // ========================================
+  // 챗봇 플로우 (PUBLISHED) — Phase 4.4 데모용
+  //
+  // 흐름:
+  //   start (always)
+  //     → message (인사) — KO 한국어, 신청자 언어로 자동 번역
+  //     → condition (status == PENDING)
+  //         true  → llm (Claude/GPT 응답) → 끝
+  //         false → escalate (이미 상담 중인 신청자는 매니저로)
+  // ========================================
+  console.log("\n🤖 챗봇 플로우...");
+
+  const flowNodes = [
+    {
+      id: "start",
+      type: "start",
+      position: { x: 250, y: 60 },
+      data: {
+        kind: "start",
+        label: "시작",
+        trigger: "always",
+        triggerValue: "",
+      },
+      deletable: false,
+    },
+    {
+      id: "msg-greet",
+      type: "message",
+      position: { x: 250, y: 200 },
+      data: {
+        kind: "message",
+        label: "인사",
+        text: "안녕하세요 {{applicant.name}}님! NB Chat 외국인 가입 상담입니다. 잠시만 기다려주세요.",
+        language: "KO_KR",
+      },
+    },
+    {
+      id: "cond-status",
+      type: "condition",
+      position: { x: 250, y: 340 },
+      data: {
+        kind: "condition",
+        label: "신규 신청자?",
+        field: "status",
+        operator: "equals",
+        value: "PENDING",
+      },
+    },
+    {
+      id: "llm-reply",
+      type: "llm",
+      position: { x: 60, y: 500 },
+      data: {
+        kind: "llm",
+        label: "AI 응답",
+        model: "claude-haiku-4-5",
+        systemPrompt:
+          "당신은 한국 통신사 LGU+의 외국인 가입 상담 챗봇입니다. 친절하고 간단하게 한국어로 답변하세요. 신청자 언어({{applicant.language}})로 번역되어 전달됩니다. 너무 길면 안 됩니다 (3-4문장).",
+        userTemplate:
+          "신청자 정보: 국적={{applicant.nationality}}, 상태={{applicant.status}}\n\n질문: {{message}}",
+      },
+    },
+    {
+      id: "esc-existing",
+      type: "escalate",
+      position: { x: 440, y: 500 },
+      data: {
+        kind: "escalate",
+        label: "매니저 인계",
+        reason: "이미 진행 중인 상담은 매니저가 직접 응대합니다.",
+        assignToManagerId: null,
+      },
+    },
+  ];
+
+  const flowEdges = [
+    {
+      id: "e-start-greet",
+      source: "start",
+      target: "msg-greet",
+      markerEnd: { type: "arrowclosed" },
+    },
+    {
+      id: "e-greet-cond",
+      source: "msg-greet",
+      target: "cond-status",
+      markerEnd: { type: "arrowclosed" },
+    },
+    {
+      id: "e-cond-true",
+      source: "cond-status",
+      sourceHandle: "true",
+      target: "llm-reply",
+      label: "신규",
+      markerEnd: { type: "arrowclosed" },
+    },
+    {
+      id: "e-cond-false",
+      source: "cond-status",
+      sourceHandle: "false",
+      target: "esc-existing",
+      label: "기존",
+      markerEnd: { type: "arrowclosed" },
+    },
+  ];
+
+  await prisma.chatbotFlow.upsert({
+    where: { id: "seed-flow-default" },
+    update: {
+      nodesData: JSON.stringify(flowNodes),
+      edgesData: JSON.stringify(flowEdges),
+      status: "PUBLISHED",
+    },
+    create: {
+      id: "seed-flow-default",
+      name: "기본 외국인 가입 상담 봇",
+      description:
+        "신청자의 첫 메시지에 자동 인사 + 신규/기존 분기. PUBLISHED 상태이므로 실제 트리거됨.",
+      status: "PUBLISHED",
+      createdBy: admin.id,
+      nodesData: JSON.stringify(flowNodes),
+      edgesData: JSON.stringify(flowEdges),
+    },
+  });
+  console.log(`  ✓ 1개 PUBLISHED 챗봇 플로우 (start→message→condition→{llm,escalate})`);
+
   console.log("");
   console.log("✅ 시드 완료\n");
   console.log("로그인 계정:");
