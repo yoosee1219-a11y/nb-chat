@@ -1,11 +1,22 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Send, Loader2, Bot, User, Wifi, WifiOff } from "lucide-react";
+import {
+  Send,
+  Loader2,
+  Bot,
+  User,
+  Wifi,
+  WifiOff,
+  Paperclip,
+  X,
+  FileText,
+  Image as ImageIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { createApplicantSocket } from "@/lib/socket-client";
-import type { ChatMessageEvent } from "@/lib/socket-types";
+import type { ChatMessageEvent, Attachment } from "@/lib/socket-types";
 
 type Message = {
   id: string;
@@ -14,8 +25,19 @@ type Message = {
   originalText: string | null;
   language: string | null;
   translatedText: string | null;
+  attachments: string | null;
   createdAt: string;
 };
+
+function parseAttachments(raw: string | null): Attachment[] {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
 
 /**
  * 신청자(고객) 모바일 채팅 화면 — Phase 3.5
@@ -47,9 +69,12 @@ export function CustomerChat({
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [pending, setPending] = useState<Attachment[]>([]);
   const [connected, setConnected] = useState(false);
   const [showOriginal, setShowOriginal] = useState<Record<string, boolean>>({});
   const endRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const socketRef = useRef<ReturnType<typeof createApplicantSocket> | null>(
     null
   );
@@ -88,6 +113,9 @@ export function CustomerChat({
             originalText: event.originalText,
             language: event.language,
             translatedText: event.translatedText,
+            attachments: event.attachments
+              ? JSON.stringify(event.attachments)
+              : null,
             createdAt: event.createdAt,
           },
         ];
@@ -100,27 +128,61 @@ export function CustomerChat({
     };
   }, [roomId, token]);
 
+  async function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          body: fd,
+          headers: { authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          alert(`업로드 실패: ${err.error ?? res.status}`);
+          continue;
+        }
+        const { data } = await res.json();
+        setPending((p) => [...p, data]);
+      }
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
   function send() {
     const trimmed = text.trim();
-    if (!trimmed || sending) return;
+    const hasAttachment = pending.length > 0;
+    if ((!trimmed && !hasAttachment) || sending) return;
     const sock = socketRef.current;
     if (!sock) return;
+
+    const type: "TEXT" | "IMAGE" | "FILE" = hasAttachment
+      ? pending.every((a) => a.mimeType.startsWith("image/"))
+        ? "IMAGE"
+        : "FILE"
+      : "TEXT";
 
     setSending(true);
     sock.emit(
       "chat:send",
       {
         roomId,
-        type: "TEXT",
+        type,
         originalText: trimmed,
         language: applicantLanguage,
+        attachments: hasAttachment ? pending : undefined,
       },
       (res) => {
         setSending(false);
         if (res.ok) {
           setText("");
+          setPending([]);
         } else {
-          // 간단한 에러 표시 — 추후 toast로 교체
           console.error("[customer] send failed", res.error);
           alert(`전송 실패: ${res.error}`);
         }
@@ -207,7 +269,44 @@ export function CustomerChat({
                           : "rounded-bl-sm bg-white text-gray-800 shadow-sm"
                       }`}
                     >
-                      <p className="whitespace-pre-wrap">{primary}</p>
+                      {parseAttachments(m.attachments).length > 0 && (
+                        <div className="mb-1.5 space-y-1">
+                          {parseAttachments(m.attachments).map((a, i) =>
+                            a.mimeType.startsWith("image/") ? (
+                              <a
+                                key={i}
+                                href={a.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="block"
+                              >
+                                <img
+                                  src={a.url}
+                                  alt={a.name}
+                                  className="max-h-48 max-w-full rounded-md"
+                                />
+                              </a>
+                            ) : (
+                              <a
+                                key={i}
+                                href={a.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[11px] hover:underline ${
+                                  isMe
+                                    ? "border-white/30 bg-white/10"
+                                    : "border-gray-200 bg-gray-50"
+                                }`}
+                              >
+                                📎 <span className="truncate">{a.name}</span>
+                              </a>
+                            )
+                          )}
+                        </div>
+                      )}
+                      {primary && (
+                        <p className="whitespace-pre-wrap">{primary}</p>
+                      )}
                       {secondary && primary !== secondary && (
                         <>
                           {open && (
@@ -256,7 +355,55 @@ export function CustomerChat({
         className="shrink-0 border-t bg-white px-3 py-2"
         style={{ paddingBottom: "max(0.5rem, env(safe-area-inset-bottom))" }}
       >
+        {pending.length > 0 && (
+          <div className="mb-2 flex flex-wrap gap-1.5">
+            {pending.map((a, i) => (
+              <div
+                key={i}
+                className="flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700"
+              >
+                {a.mimeType.startsWith("image/") ? (
+                  <ImageIcon className="h-3 w-3" />
+                ) : (
+                  <FileText className="h-3 w-3" />
+                )}
+                <span className="max-w-[140px] truncate">{a.name}</span>
+                <button
+                  onClick={() =>
+                    setPending((p) => p.filter((_, j) => j !== i))
+                  }
+                  className="ml-0.5 hover:text-rose-600"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,application/pdf"
+          multiple
+          className="hidden"
+          onChange={(e) => handleFiles(e.target.files)}
+        />
         <div className="flex items-end gap-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            disabled={!connected || uploading}
+            onClick={() => fileRef.current?.click()}
+            className="h-11 w-11 shrink-0"
+            title="사진/PDF 첨부 (10MB 이하)"
+          >
+            {uploading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Paperclip className="h-4 w-4" />
+            )}
+          </Button>
           <Textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -273,7 +420,11 @@ export function CustomerChat({
           />
           <Button
             onClick={send}
-            disabled={!connected || sending || !text.trim()}
+            disabled={
+              !connected ||
+              sending ||
+              (!text.trim() && pending.length === 0)
+            }
             size="icon"
             className="h-11 w-11 shrink-0 bg-emerald-500 hover:bg-emerald-600"
           >

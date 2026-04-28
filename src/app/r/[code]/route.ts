@@ -54,11 +54,19 @@ export async function GET(
     }
   }
 
-  const campaign =
-    url.searchParams.get("utm_campaign") ?? url.searchParams.get("campaign");
-  const medium =
-    url.searchParams.get("utm_medium") ?? url.searchParams.get("medium");
-  const referrer = req.headers.get("referer") || null;
+  // 길이 제한 — 쿠키 4KB 한도 + DB 안전 + 잠재적 poisoning 차단
+  const truncate = (v: string | null, max: number) =>
+    v ? v.slice(0, max) : null;
+
+  const campaign = truncate(
+    url.searchParams.get("utm_campaign") ?? url.searchParams.get("campaign"),
+    100
+  );
+  const medium = truncate(
+    url.searchParams.get("utm_medium") ?? url.searchParams.get("medium"),
+    50
+  );
+  const referrer = truncate(req.headers.get("referer") || null, 500);
 
   const sourceData = {
     partnerId: resolvedPartnerId,

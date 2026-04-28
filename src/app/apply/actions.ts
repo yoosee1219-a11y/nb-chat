@@ -54,8 +54,24 @@ export async function submitApplication(input: ApplyInput) {
   const cookieStore = await cookies();
   const source = parseSourceCookie(cookieStore.get("fics_source")?.value);
 
-  // source가 없으면 DIRECT로 폴백
-  let sourcePartnerId = source?.partnerId ?? null;
+  // source partner 서버 재검증 — 쿠키는 클라 변조 가능
+  // 1) 쿠키의 partnerId/code를 활성 거래처로 재확인
+  // 2) 매칭 실패 시 DIRECT 폴백
+  let sourcePartnerId: string | null = null;
+  if (source?.partnerId) {
+    const validated = await prisma.partner.findUnique({
+      where: { id: source.partnerId },
+      select: { id: true, isActive: true },
+    });
+    if (validated?.isActive) sourcePartnerId = validated.id;
+  }
+  if (!sourcePartnerId && source?.partnerCode) {
+    const validated = await prisma.partner.findUnique({
+      where: { code: source.partnerCode },
+      select: { id: true, isActive: true },
+    });
+    if (validated?.isActive) sourcePartnerId = validated.id;
+  }
   if (!sourcePartnerId) {
     const direct = await prisma.partner.findUnique({
       where: { code: "DIRECT" },
@@ -63,6 +79,10 @@ export async function submitApplication(input: ApplyInput) {
     });
     sourcePartnerId = direct?.id ?? null;
   }
+
+  // 길이 제한 — DB 저장 안전망
+  const trim = (v: string | null | undefined, max = 200) =>
+    v ? v.slice(0, max) : null;
 
   // appliedPlanId 검증
   let appliedPlanId: string | null = null;
@@ -88,9 +108,9 @@ export async function submitApplication(input: ApplyInput) {
         status: "PENDING",
         appliedPlanId,
         sourcePartnerId,
-        sourceCampaign: source?.campaign ?? null,
-        sourceMedium: source?.medium ?? null,
-        sourceReferrer: source?.referrer ?? null,
+        sourceCampaign: trim(source?.campaign, 100),
+        sourceMedium: trim(source?.medium, 50),
+        sourceReferrer: trim(source?.referrer, 500),
         sourceLandedAt: source?.landedAt ? new Date(source.landedAt) : null,
       },
     });

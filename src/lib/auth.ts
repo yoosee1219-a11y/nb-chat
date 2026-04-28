@@ -48,7 +48,7 @@ export async function login(
     role: manager.role,
   };
 
-  const token = await new SignJWT({ ...payload })
+  const token = await new SignJWT({ ...payload, kind: "manager" })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${COOKIE_MAX_AGE}s`)
@@ -105,12 +105,24 @@ export async function getSession(): Promise<SessionPayload | null> {
 
   try {
     const { payload } = await jwtVerify(token, getSecret());
-    return {
-      managerId: payload.managerId as string,
-      email: payload.email as string,
-      name: payload.name as string,
-      role: payload.role as string,
-    };
+    // kind 가드 — applicant 룸 토큰을 매니저 세션으로 위장 차단
+    if (payload.kind !== "manager") return null;
+    const managerId = payload.managerId;
+    const email = payload.email;
+    const name = payload.name;
+    const role = payload.role;
+    if (
+      typeof managerId !== "string" ||
+      !managerId ||
+      typeof email !== "string" ||
+      !email ||
+      typeof name !== "string" ||
+      typeof role !== "string" ||
+      !role
+    ) {
+      return null;
+    }
+    return { managerId, email, name, role };
   } catch {
     return null;
   }
@@ -135,12 +147,23 @@ export async function verifySessionToken(
 ): Promise<SessionPayload | null> {
   try {
     const { payload } = await jwtVerify(token, getSecret());
-    return {
-      managerId: payload.managerId as string,
-      email: payload.email as string,
-      name: payload.name as string,
-      role: payload.role as string,
-    };
+    if (payload.kind !== "manager") return null;
+    const managerId = payload.managerId;
+    const email = payload.email;
+    const name = payload.name;
+    const role = payload.role;
+    if (
+      typeof managerId !== "string" ||
+      !managerId ||
+      typeof email !== "string" ||
+      !email ||
+      typeof name !== "string" ||
+      typeof role !== "string" ||
+      !role
+    ) {
+      return null;
+    }
+    return { managerId, email, name, role };
   } catch {
     return null;
   }

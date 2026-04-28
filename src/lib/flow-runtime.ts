@@ -71,6 +71,10 @@ export type FlowExecutionResult = {
 };
 
 const MAX_STEPS = 50;
+const MAX_NODES = 200;
+const MAX_EDGES = 400;
+const MAX_EMITTED_MESSAGES = 20;
+const MAX_MESSAGE_CHARS = 4000;
 
 // ─── 변수 치환 ────────────────────────────────────
 export function substituteVariables(
@@ -205,6 +209,26 @@ export async function executeFlow(
   const steps: FlowStep[] = [];
   const emittedMessages: FlowExecutionResult["emittedMessages"] = [];
 
+  // 입력 크기 가드 — 악성/잘못된 플로우가 런타임 자원 폭주 방지
+  if (nodes.length > MAX_NODES) {
+    return {
+      ok: false,
+      steps: [],
+      terminatedBy: "error",
+      error: `노드 수가 ${MAX_NODES}개를 초과합니다 (${nodes.length}개)`,
+      emittedMessages: [],
+    };
+  }
+  if (edges.length > MAX_EDGES) {
+    return {
+      ok: false,
+      steps: [],
+      terminatedBy: "error",
+      error: `엣지 수가 ${MAX_EDGES}개를 초과합니다 (${edges.length}개)`,
+      emittedMessages: [],
+    };
+  }
+
   const start = findStartNode(nodes);
   if (!start) {
     return {
@@ -259,7 +283,19 @@ export async function executeFlow(
 
     if (kind === "message") {
       const data = node.data as MessageNodeData;
+      if (emittedMessages.length >= MAX_EMITTED_MESSAGES) {
+        return {
+          ok: false,
+          steps,
+          terminatedBy: "error",
+          error: `발송 메시지가 ${MAX_EMITTED_MESSAGES}개를 초과`,
+          emittedMessages,
+        };
+      }
       const emitted = await executeMessage(data, ctx);
+      // 텍스트 cap (LLM 폭주 방지선)
+      emitted.text = emitted.text.slice(0, MAX_MESSAGE_CHARS);
+      emitted.translatedText = emitted.translatedText.slice(0, MAX_MESSAGE_CHARS);
       steps.push({
         nodeId: node.id,
         kind,
@@ -281,17 +317,27 @@ export async function executeFlow(
       currentId = nextNodeId(edges, node.id, result ? "true" : "false");
     } else if (kind === "llm") {
       const data = node.data as LLMNodeData;
-      const response = await executeLLM(data, ctx);
+      if (emittedMessages.length >= MAX_EMITTED_MESSAGES) {
+        return {
+          ok: false,
+          steps,
+          terminatedBy: "error",
+          error: `발송 메시지가 ${MAX_EMITTED_MESSAGES}개를 초과`,
+          emittedMessages,
+        };
+      }
+      const responseRaw = await executeLLM(data, ctx);
+      const response = responseRaw.slice(0, MAX_MESSAGE_CHARS);
       // LLM 응답(한국어 가정)을 신청자 언어로 번역해 emit
       const translator = getTranslator();
-      const { translatedText } = await translator.translate({
+      const { translatedText: translatedRaw } = await translator.translate({
         text: response,
         sourceLanguage: "KO_KR",
         targetLanguage: ctx.language,
       });
       const emitted = {
         text: response,
-        translatedText,
+        translatedText: translatedRaw.slice(0, MAX_MESSAGE_CHARS),
         sourceLanguage: "KO_KR",
         targetLanguage: ctx.language,
       };

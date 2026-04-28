@@ -219,6 +219,7 @@ async function maybeRunChatbot(input: {
       originalText: created.originalText,
       language: created.language,
       translatedText: created.translatedText,
+      attachments: null,
       createdAt: created.createdAt.toISOString(),
     });
   }
@@ -239,6 +240,34 @@ async function maybeRunChatbot(input: {
   );
 }
 
+// ─── 매니저 자동 룸 가입 (글로벌 알림용) ──────────────────────
+// connection 시점에 매니저가 권한 있는 모든 룸에 가입 → 어떤 페이지에 있어도 chat:message 수신
+async function autoJoinManagerRooms(socket: {
+  data: SocketData;
+  join: (room: string) => Promise<void> | void;
+}) {
+  if (socket.data.kind !== "manager") return;
+  const where =
+    socket.data.role === "ADMIN"
+      ? {}
+      : {
+          OR: [
+            { managerId: null },
+            { managerId: socket.data.managerId },
+          ],
+        };
+  const rooms = await prisma.chatRoom.findMany({
+    where,
+    select: { id: true },
+  });
+  for (const r of rooms) {
+    await socket.join(roomKey(r.id));
+  }
+  console.log(
+    `[socket] manager auto-joined ${rooms.length} rooms (${socket.data.email})`
+  );
+}
+
 // ─── 핸들러 ──────────────────────────────────────────────────────
 chatNs.on("connection", (socket) => {
   const label =
@@ -246,6 +275,11 @@ chatNs.on("connection", (socket) => {
       ? socket.data.email
       : `applicant:${socket.data.applicantId}`;
   console.log(`[socket] connect ${label} (${socket.id})`);
+
+  // 매니저면 권한 있는 모든 룸 자동 가입 (백그라운드)
+  autoJoinManagerRooms(socket).catch((e) =>
+    console.error("[socket] autoJoinManagerRooms failed", e)
+  );
 
   socket.on("chat:subscribe", async ({ roomId }, ack) => {
     try {
@@ -265,11 +299,20 @@ chatNs.on("connection", (socket) => {
 
   socket.on("chat:send", async (input: SendMessageInput, ack) => {
     try {
-      if (input.type !== "TEXT") {
-        return ack({ ok: false, error: "ONLY_TEXT_SUPPORTED" });
+      const allowedTypes = new Set(["TEXT", "IMAGE", "FILE"]);
+      if (!allowedTypes.has(input.type)) {
+        return ack({ ok: false, error: "INVALID_TYPE" });
       }
-      const text = input.originalText?.trim();
-      if (!text) return ack({ ok: false, error: "EMPTY_TEXT" });
+      const text = input.originalText?.trim() ?? "";
+      const attachments = Array.isArray(input.attachments)
+        ? input.attachments
+        : [];
+      if (input.type === "TEXT" && !text) {
+        return ack({ ok: false, error: "EMPTY_TEXT" });
+      }
+      if ((input.type === "IMAGE" || input.type === "FILE") && attachments.length === 0) {
+        return ack({ ok: false, error: "ATTACHMENT_REQUIRED" });
+      }
       if (text.length > 4000) return ack({ ok: false, error: "TOO_LONG" });
 
       // 권한 + 룸 페치
@@ -291,14 +334,16 @@ chatNs.on("connection", (socket) => {
         : "APPLICANT";
       const senderId = isManager ? socket.data.managerId : null;
 
-      // 번역 — 발신자 언어 → 상대 언어
-      // 매니저(KO) → 신청자(peer) / 신청자(peer) → 매니저(KO)
+      // 번역은 텍스트만. IMAGE/FILE은 caption(text)이 있을 때만.
       const targetLang = isManager ? peerLang : "KO_KR";
-      const { translatedText } = await translateForPeer(
-        text,
-        input.language,
-        targetLang
-      );
+      let translatedText: string | null = null;
+      if (text) {
+        const r = await translateForPeer(text, input.language, targetLang);
+        translatedText = r.translatedText;
+      }
+
+      const attachmentsJson =
+        attachments.length > 0 ? JSON.stringify(attachments) : null;
 
       const created = await prisma.$transaction(async (tx) => {
         const message = await tx.message.create({
@@ -306,18 +351,18 @@ chatNs.on("connection", (socket) => {
             roomId: input.roomId,
             senderType,
             senderId,
-            type: "TEXT",
-            originalText: text,
-            language: input.language,
+            type: input.type,
+            originalText: text || null,
+            language: text ? input.language : null,
             translatedText,
-            isRead: isManager, // 매니저 발신 → 매니저 측 읽음
+            attachments: attachmentsJson,
+            isRead: isManager,
           },
         });
         const updated = await tx.chatRoom.update({
           where: { id: input.roomId },
           data: {
             lastMessageAt: message.createdAt,
-            // 신청자 발신이면 매니저용 unread 증가
             unreadCount: isManager ? undefined : { increment: 1 },
           },
         });
@@ -329,10 +374,11 @@ chatNs.on("connection", (socket) => {
         roomId: created.message.roomId,
         senderType,
         senderId,
-        type: "TEXT",
+        type: input.type,
         originalText: created.message.originalText,
         language: created.message.language,
         translatedText: created.message.translatedText,
+        attachments: attachments.length > 0 ? attachments : null,
         createdAt: created.message.createdAt.toISOString(),
       };
 

@@ -13,6 +13,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { SidebarNav } from "./sidebar-nav";
+import { GlobalNotifications } from "./global-notifications";
 
 async function logoutAction() {
   "use server";
@@ -53,7 +54,7 @@ export default async function AdminLayout({
         </SidebarHeader>
 
         <SidebarContent>
-          <SidebarNav />
+          <SidebarNav role={session.role} />
         </SidebarContent>
 
         <SidebarFooter className="border-t border-sidebar-border p-3">
@@ -92,6 +93,7 @@ export default async function AdminLayout({
         </header>
         <main className="flex-1 p-6">{children}</main>
       </SidebarInset>
+      <GlobalNotifications />
     </SidebarProvider>
   );
 }

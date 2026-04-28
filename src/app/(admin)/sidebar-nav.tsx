@@ -10,6 +10,7 @@ import {
   Bot,
   UserCog,
   Building2,
+  ShieldCheck,
 } from "lucide-react";
 import {
   SidebarGroup,
@@ -20,7 +21,15 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 
-const NAV = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  /** 이 메뉴를 볼 수 있는 역할들. 없으면 모두 가능 */
+  allowedRoles?: string[];
+};
+
+const NAV: { label: string; items: NavItem[] }[] = [
   {
     label: "메인",
     items: [{ href: "/dashboard", label: "대시보드", icon: LayoutDashboard }],
@@ -37,43 +46,57 @@ const NAV = [
   },
   {
     label: "관리",
-    items: [{ href: "/managers", label: "매니저 관리", icon: UserCog }],
+    items: [
+      { href: "/managers", label: "매니저 관리", icon: UserCog },
+      {
+        href: "/audit",
+        label: "감사 로그",
+        icon: ShieldCheck,
+        allowedRoles: ["ADMIN"],
+      },
+    ],
   },
 ];
 
-export function SidebarNav() {
+export function SidebarNav({ role }: { role: string }) {
   const pathname = usePathname();
 
   return (
     <>
-      {NAV.map((group) => (
-        <SidebarGroup key={group.label}>
-          <SidebarGroupLabel className="text-xs uppercase tracking-wider text-sidebar-foreground/60">
-            {group.label}
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {group.items.map((item) => {
-                const active =
-                  pathname === item.href ||
-                  pathname.startsWith(`${item.href}/`);
-                const Icon = item.icon;
-                return (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton
-                      render={<Link href={item.href} />}
-                      isActive={active}
-                    >
-                      <Icon />
-                      <span>{item.label}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      ))}
+      {NAV.map((group) => {
+        const visibleItems = group.items.filter(
+          (item) => !item.allowedRoles || item.allowedRoles.includes(role)
+        );
+        if (visibleItems.length === 0) return null;
+        return (
+          <SidebarGroup key={group.label}>
+            <SidebarGroupLabel className="text-xs uppercase tracking-wider text-sidebar-foreground/60">
+              {group.label}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {visibleItems.map((item) => {
+                  const active =
+                    pathname === item.href ||
+                    pathname.startsWith(`${item.href}/`);
+                  const Icon = item.icon;
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton
+                        render={<Link href={item.href} />}
+                        isActive={active}
+                      >
+                        <Icon />
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        );
+      })}
     </>
   );
 }

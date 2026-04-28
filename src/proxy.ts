@@ -16,9 +16,11 @@ import { jwtVerify } from "jose";
 const PUBLIC_PATHS = ["/login", "/api/health", "/apply"];
 
 // 정확 prefix 매칭 — 고객(신청자) 경로는 별도 룸-바운드 토큰으로 보호
-//   /c/  : 채팅 (룸-바운드 토큰)
-//   /r/  : 유입 추적 진입 → /apply 리다이렉트
-const PUBLIC_PREFIXES = ["/c/", "/r/"];
+//   /c/         : 채팅 (룸-바운드 토큰)
+//   /r/         : 유입 추적 진입 → /apply 리다이렉트
+//   /api/upload : 자체 인증 (매니저 세션 OR 룸 토큰 Bearer)
+//   /uploads/   : 정적 파일 (URL 알면 누구나 접근 — MVP. 운영 시 signed URL)
+const PUBLIC_PREFIXES = ["/c/", "/r/", "/api/upload", "/uploads/"];
 
 const getSecret = () => {
   const secret = process.env.AUTH_SECRET;
@@ -47,10 +49,14 @@ export async function proxy(req: NextRequest) {
   }
 
   try {
-    await jwtVerify(token, getSecret());
+    const { payload } = await jwtVerify(token, getSecret());
+    // kind 가드 — applicant 룸 토큰이 fics_session 쿠키로 들어왔을 때 차단
+    if (payload.kind !== "manager") {
+      throw new Error("not a manager token");
+    }
     return NextResponse.next();
   } catch {
-    // 토큰 invalid/expired → 쿠키 삭제 + 로그인으로
+    // 토큰 invalid/expired/wrong-kind → 쿠키 삭제 + 로그인으로
     const loginUrl = new URL("/login", req.url);
     if (pathname !== "/") loginUrl.searchParams.set("from", pathname);
     const res = NextResponse.redirect(loginUrl);

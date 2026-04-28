@@ -1,17 +1,14 @@
 /**
- * 번역 추상화 — Phase 3.4
+ * 번역 추상화 — Phase 3.4 + A1 (캐시)
  *
  * 어댑터:
  *  - MockTranslator: API 키 없을 때 (개발/테스트용 라벨링)
  *  - GoogleTranslator: GOOGLE_TRANSLATE_API_KEY 있으면 v2 REST 호출
- *
- * 추상화 이유:
- *  - 라이브러리/벤더 교체 비용 0
- *  - 테스트에서 deterministic mock 주입 가능
- *  - 캐시 레이어도 같은 인터페이스 안에서 wrap (Phase 3.4.1 예정)
+ *  - CachingTranslator: DB 캐시 wrapper (translation_cache 테이블)
+ *    → 같은 (text, source, target) 3-tuple은 1번만 외부 API 호출
+ *    → MVP에서 30~50% 비용 절감 기대 (정형 안내 메시지 반복 사용)
  *
  * NOTE: `server-only`는 standalone socket 서버에서도 import 가능해야 하므로 사용 안 함.
- *       호출자가 서버 컨텍스트인지 책임진다.
  */
 
 export type TranslateInput = {
@@ -112,17 +109,108 @@ class GoogleTranslator implements Translator {
   }
 }
 
+// ─── DB 캐시 래퍼 ──────────────────────────────────────────
+// translation_cache 테이블에 (contentHash) 기준으로 저장.
+// hits 증가 + lastUsedAt 갱신 → LRU evict 정책 추후 도입 가능.
+import { createHash } from "node:crypto";
+
+function contentHash(text: string, src: string, tgt: string): string {
+  return createHash("sha256")
+    .update(`${src}${tgt}${text}`)
+    .digest("hex");
+}
+
+class CachingTranslator implements Translator {
+  constructor(private inner: Translator) {}
+
+  async translate(input: TranslateInput): Promise<TranslateOutput> {
+    const { text, sourceLanguage, targetLanguage } = input;
+    if (sourceLanguage === targetLanguage) {
+      return { translatedText: text, cached: false, charsBilled: 0 };
+    }
+
+    // Prisma는 서버에서만 import (싸이클 방지로 동적 require)
+    const { prisma } = await import("./prisma");
+    const hash = contentHash(text, sourceLanguage, targetLanguage);
+
+    // 1) 캐시 조회
+    try {
+      const cached = await prisma.translationCache.findUnique({
+        where: { contentHash: hash },
+        select: { id: true, translatedText: true },
+      });
+      if (cached) {
+        // 비동기 hits++ (응답은 막지 않음)
+        prisma.translationCache
+          .update({
+            where: { id: cached.id },
+            data: { hits: { increment: 1 }, lastUsedAt: new Date() },
+          })
+          .catch((e) => console.error("[translation-cache] hits update failed", e));
+        return {
+          translatedText: cached.translatedText,
+          cached: true,
+          charsBilled: 0,
+        };
+      }
+    } catch (e) {
+      // 캐시 조회 실패해도 본 번역은 진행
+      console.error("[translation-cache] read failed, falling through", e);
+    }
+
+    // 2) Miss → 실 번역
+    const result = await this.inner.translate(input);
+
+    // 3) 저장 (실패해도 응답은 정상)
+    // 너무 긴 텍스트는 캐시 가치 적고 DB 비대화 → 4KB 이상은 저장 X
+    const CACHE_MAX_CHARS = 4000;
+    if (text.length <= CACHE_MAX_CHARS) {
+      try {
+        await prisma.translationCache.create({
+          data: {
+            contentHash: hash,
+            sourceLanguage,
+            targetLanguage,
+            originalText: text,
+            translatedText: result.translatedText.slice(0, CACHE_MAX_CHARS * 2),
+          },
+        });
+      } catch (e) {
+        // P2002 = Prisma unique constraint violation (병행 miss → 정상)
+        const code =
+          e && typeof e === "object" && "code" in e
+            ? (e as { code?: string }).code
+            : null;
+        if (code !== "P2002") {
+          console.error("[translation-cache] write failed", e);
+        }
+      }
+    }
+
+    return result;
+  }
+}
+
 let singleton: Translator | null = null;
 
 export function getTranslator(): Translator {
   if (singleton) return singleton;
   const key = process.env.GOOGLE_TRANSLATE_API_KEY;
+  let base: Translator;
   if (key) {
-    singleton = new GoogleTranslator(key);
-    console.log("[translation] using GoogleTranslator (v2 REST)");
+    base = new GoogleTranslator(key);
+    console.log("[translation] using GoogleTranslator (v2 REST) + cache");
   } else {
-    singleton = new MockTranslator();
-    console.log("[translation] using MockTranslator (set GOOGLE_TRANSLATE_API_KEY for real)");
+    base = new MockTranslator();
+    console.log(
+      "[translation] using MockTranslator + cache (set GOOGLE_TRANSLATE_API_KEY for real)"
+    );
+  }
+  // 캐시 비활성화 옵션 (test/debug용)
+  if (process.env.TRANSLATION_CACHE_DISABLED === "true") {
+    singleton = base;
+  } else {
+    singleton = new CachingTranslator(base);
   }
   return singleton;
 }

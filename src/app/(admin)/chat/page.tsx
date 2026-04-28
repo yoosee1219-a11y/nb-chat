@@ -172,6 +172,7 @@ function SelectedRoomView({
     originalText: string | null;
     language: string | null;
     translatedText: string | null;
+    attachments: string | null;
     createdAt: Date;
   }>;
 }) {

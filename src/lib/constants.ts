@@ -74,4 +74,10 @@ export const AUDIT_ACTIONS = {
   MANAGER_UPDATED: "매니저 수정",
   MANAGER_DEACTIVATED: "매니저 비활성화",
   MESSAGE_SENT: "메시지 전송",
+  PARTNER_CREATED: "거래처 등록",
+  PARTNER_UPDATED: "거래처 수정",
+  PARTNER_DELETED: "거래처 삭제",
+  FLOW_CREATED: "챗봇 플로우 생성",
+  FLOW_SAVED: "챗봇 플로우 저장",
+  FLOW_DELETED: "챗봇 플로우 삭제",
 } as const;

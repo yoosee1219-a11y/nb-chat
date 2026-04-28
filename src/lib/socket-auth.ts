@@ -39,7 +39,8 @@ export async function verifyAnyToken(
       return { kind: "applicant", roomId, applicantId, language };
     }
 
-    // 매니저 세션 토큰 (kind 없음 — 기존 호환)
+    // 매니저 세션 토큰 — 명시적 kind:"manager" 요구 (cross-token 위장 차단)
+    if (payload.kind !== "manager") return null;
     const managerId = payload.managerId as string | undefined;
     const email = payload.email as string | undefined;
     const role = payload.role as string | undefined;

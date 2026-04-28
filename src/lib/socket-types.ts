@@ -24,11 +24,19 @@ export interface ClientToServerEvents {
   ) => void;
 }
 
+export type Attachment = {
+  url: string;
+  name: string;
+  size: number;
+  mimeType: string;
+};
+
 export type SendMessageInput = {
   roomId: string;
-  type: "TEXT"; // Phase 3.2 = TEXT only. IMAGE/FILE/CARD는 추후
+  type: "TEXT" | "IMAGE" | "FILE";
   originalText: string;
   language: string; // BCP-47 underscore variant (KO_KR, RU_RU, ...)
+  attachments?: Attachment[];
 };
 
 // ─── 서버 → 클라이언트 ─────────────────────────────
@@ -46,6 +54,7 @@ export type ChatMessageEvent = {
   originalText: string | null;
   language: string | null;
   translatedText: string | null;
+  attachments: Attachment[] | null;
   createdAt: string; // ISO
 };
 

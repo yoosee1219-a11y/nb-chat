@@ -15,8 +15,26 @@ type MessageItem = {
   originalText: string | null;
   language: string | null;
   translatedText: string | null;
+  attachments: string | null; // JSON 직렬화
   createdAt: Date;
 };
+
+type ParsedAttachment = {
+  url: string;
+  name: string;
+  size: number;
+  mimeType: string;
+};
+
+function parseAttachments(raw: string | null): ParsedAttachment[] {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
 
 /**
  * 매니저(한국어) 시점 메시지 패널.
@@ -85,9 +103,49 @@ export function MessagePanel({
                       : "bg-muted"
                   }`}
                 >
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed">
-                    {primary ?? secondary ?? "(빈 메시지)"}
-                  </p>
+                  {parseAttachments(m.attachments).length > 0 && (
+                    <div className="mb-2 space-y-1.5">
+                      {parseAttachments(m.attachments).map((a, i) =>
+                        a.mimeType.startsWith("image/") ? (
+                          <a
+                            key={i}
+                            href={a.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="block"
+                          >
+                            <img
+                              src={a.url}
+                              alt={a.name}
+                              className="max-h-60 max-w-full rounded-md border"
+                            />
+                          </a>
+                        ) : (
+                          <a
+                            key={i}
+                            href={a.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs hover:underline ${
+                              isManager
+                                ? "border-primary-foreground/30 bg-primary-foreground/10"
+                                : "border-border bg-background"
+                            }`}
+                          >
+                            📎 <span className="truncate">{a.name}</span>
+                            <span className="opacity-60">
+                              ({Math.round(a.size / 1024)}KB)
+                            </span>
+                          </a>
+                        )
+                      )}
+                    </div>
+                  )}
+                  {(primary || secondary) && (
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed">
+                      {primary ?? secondary}
+                    </p>
+                  )}
 
                   {open && secondary && (
                     <div

@@ -533,10 +533,31 @@ async function main() {
         kind: "llm",
         label: "AI 응답",
         model: "claude-haiku-4-5",
-        systemPrompt:
-          "당신은 한국 통신사 LGU+의 외국인 가입 상담 챗봇입니다. 친절하고 간단하게 한국어로 답변하세요. 신청자 언어({{applicant.language}})로 번역되어 전달됩니다. 너무 길면 안 됩니다 (3-4문장).",
-        userTemplate:
-          "신청자 정보: 국적={{applicant.nationality}}, 상태={{applicant.status}}\n\n질문: {{message}}",
+        systemPrompt: [
+          "당신은 한국 통신사 LGU+의 외국인 신규 가입 상담 챗봇입니다.",
+          "역할: 신청자가 가입에 필요한 서류와 절차를 이해하도록 안내.",
+          "",
+          "필수 안내 정보 (사용자가 묻거나 관련될 때):",
+          "- 가입에 필요한 서류: 여권 + 외국인등록증 (또는 거소증) + 비자 (E-9/F-2/F-4/D-2/D-4/H-2 등)",
+          "- 미성년자(만 19세 미만)는 부모 동행 또는 위임장 필요",
+          "- 결제: 한국 은행 계좌 (외국인 계좌 OK) 또는 신용카드",
+          "- 약정 상품은 12/24개월. 약정 없는 선불 유심도 가능.",
+          "- 본인 확인: 영상통화 또는 매장 방문 (본인 인증 안 되면 가입 불가)",
+          "",
+          "톤: 짧고 명확하게. 한국어로 답변 → 자동으로 신청자 언어({{applicant.language}})로 번역됨.",
+          "응답 길이: 3-5문장. 마지막에 다음 질문 1개 제안.",
+          "민감 사안(요금 분쟁, 환불, 명의도용 등)은 '잠시만요, 매니저가 직접 도와드리겠습니다'로 인계.",
+        ].join("\n"),
+        userTemplate: [
+          "[신청자 컨텍스트]",
+          "- 이름: {{applicant.name}}",
+          "- 국적: {{applicant.nationality}}",
+          "- 모국어: {{applicant.language}}",
+          "- 상담 상태: {{applicant.status}}",
+          "",
+          "[신청자 메시지 (모국어 → 한국어 자동번역됨)]",
+          "{{message}}",
+        ].join("\n"),
       },
     },
     {
@@ -601,7 +622,78 @@ async function main() {
       edgesData: JSON.stringify(flowEdges),
     },
   });
-  console.log(`  ✓ 1개 PUBLISHED 챗봇 플로우 (start→message→condition→{llm,escalate})`);
+  console.log(`  ✓ 기본 PUBLISHED 플로우 (start→message→condition→{llm,escalate})`);
+
+  // ── 추가 DRAFT 플로우: 긴급 키워드 즉시 매니저 인계 ─────
+  // ('환불', '항의', '명의도용' 등 민감 키워드 감지)
+  const urgentNodes = [
+    {
+      id: "start",
+      type: "start",
+      position: { x: 250, y: 60 },
+      data: {
+        kind: "start",
+        label: "긴급 키워드 트리거",
+        trigger: "keyword_match",
+        triggerValue: "환불",
+      },
+      deletable: false,
+    },
+    {
+      id: "msg-ack",
+      type: "message",
+      position: { x: 250, y: 200 },
+      data: {
+        kind: "message",
+        label: "긴급 응답",
+        text: "긴급한 사안이 감지되었습니다. 즉시 담당 매니저에게 연결해드릴게요.",
+        language: "KO_KR",
+      },
+    },
+    {
+      id: "esc-urgent",
+      type: "escalate",
+      position: { x: 250, y: 340 },
+      data: {
+        kind: "escalate",
+        label: "긴급 인계",
+        reason: "긴급 키워드 감지 — 환불/항의/명의도용",
+        assignToManagerId: null,
+      },
+    },
+  ];
+  const urgentEdges = [
+    {
+      id: "e-start-ack",
+      source: "start",
+      target: "msg-ack",
+      markerEnd: { type: "arrowclosed" },
+    },
+    {
+      id: "e-ack-esc",
+      source: "msg-ack",
+      target: "esc-urgent",
+      markerEnd: { type: "arrowclosed" },
+    },
+  ];
+  await prisma.chatbotFlow.upsert({
+    where: { id: "seed-flow-urgent" },
+    update: {
+      nodesData: JSON.stringify(urgentNodes),
+      edgesData: JSON.stringify(urgentEdges),
+    },
+    create: {
+      id: "seed-flow-urgent",
+      name: "긴급 키워드 매니저 인계",
+      description:
+        "환불/항의 등 민감 키워드 감지 시 즉시 매니저 인계. (DRAFT — 운영 시 PUBLISHED 변경)",
+      status: "DRAFT",
+      createdBy: admin.id,
+      nodesData: JSON.stringify(urgentNodes),
+      edgesData: JSON.stringify(urgentEdges),
+    },
+  });
+  console.log(`  ✓ DRAFT 긴급 인계 플로우 (start[keyword=환불]→message→escalate)`);
 
   console.log("");
   console.log("✅ 시드 완료\n");
