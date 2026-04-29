@@ -59,7 +59,7 @@ model Applicant {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  // 유입 추적 — Phase 5
+  // 유입 추적 — Phase 5 (last-touch)
   // sourcePartnerId가 null이면 미상 (구버전 데이터). DIRECT는 별도 partner row.
   sourcePartnerId String?
   sourceCampaign  String?   // utm_campaign — 거래처 내 캠페인 분기
@@ -67,8 +67,17 @@ model Applicant {
   sourceReferrer  String?   // HTTP referrer (랜딩 직전 URL)
   sourceLandedAt  DateTime? // 랜딩 시각 (가입 전환 시간 측정)
 
+  // 첫 터치 (first-touch) — Phase 5.7
+  // 처음 유입된 채널을 영구 쿠키로 기록해 가입 시 함께 저장
+  // 마케팅 어트리뷰션: last-touch는 단기 캠페인, first-touch는 브랜드 임팩트
+  firstTouchPartnerId String?
+  firstTouchCampaign  String?
+  firstTouchMedium    String?
+  firstTouchLandedAt  DateTime?
+
   appliedPlan   Plan?           @relation(fields: [appliedPlanId], references: [id])
-  sourcePartner Partner?        @relation(fields: [sourcePartnerId], references: [id])
+  sourcePartner Partner?        @relation("ApplicantSourcePartner", fields: [sourcePartnerId], references: [id])
+  firstTouchPartner Partner?    @relation("ApplicantFirstTouchPartner", fields: [firstTouchPartnerId], references: [id])
   rooms         ChatRoom[]
   notes         Note[]
   statusHistory StatusHistory[]
@@ -76,6 +85,7 @@ model Applicant {
   @@index([status])
   @@index([nationality])
   @@index([sourcePartnerId, appliedAt])
+  @@index([firstTouchPartnerId, appliedAt])
   @@map("applicants")
 }
 
@@ -120,9 +130,36 @@ model Partner {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  applicants Applicant[]
+  applicants          Applicant[]      @relation("ApplicantSourcePartner")
+  firstTouchApplicants Applicant[]     @relation("ApplicantFirstTouchPartner")
+  clicks              PartnerClick[]
 
   @@map("partners")
+}
+
+// ============================================
+// 거래처 클릭 raw 로그 — Phase 5.7
+// /r/[code] 진입마다 1 row. 가입 전환율 = applicants count / clicks count
+// 비활성/잘못된 코드도 originalCode에 그대로 저장 (poisoning 분석용)
+// ============================================
+model PartnerClick {
+  id           String   @id @default(cuid())
+  partnerId    String?  // 매칭된 partner.id (DIRECT 폴백 포함). null = unmatched (raw 분석)
+  originalCode String   // 사용자가 친 raw code — partnerId와 다를 수 있음 (오타/폐기 코드)
+  campaign     String?
+  medium       String?
+  referrer     String?
+  ipHash       String?  // sha256(ip + salt) — 개인정보 직접 저장 X, 유니크 방문자 추정
+  userAgent    String?
+  sessionId    String?  // 쿠키 fics_session — 같은 세션 내 중복 클릭 묶음
+  createdAt    DateTime @default(now())
+
+  partner Partner? @relation(fields: [partnerId], references: [id])
+
+  @@index([partnerId, createdAt])
+  @@index([originalCode, createdAt])
+  @@index([createdAt])
+  @@map("partner_clicks")
 }
 
 // ============================================

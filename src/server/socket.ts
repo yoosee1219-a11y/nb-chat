@@ -239,6 +239,8 @@ async function maybeRunChatbot(input: {
       language: created.language,
       translatedText: created.translatedText,
       attachments: null,
+      cardType: null,
+      cardPayload: null,
       createdAt: created.createdAt.toISOString(),
     });
   }
@@ -318,7 +320,7 @@ chatNs.on("connection", (socket) => {
 
   socket.on("chat:send", async (input: SendMessageInput, ack) => {
     try {
-      const allowedTypes = new Set(["TEXT", "IMAGE", "FILE"]);
+      const allowedTypes = new Set(["TEXT", "IMAGE", "FILE", "CARD"]);
       if (!allowedTypes.has(input.type)) {
         return ack({ ok: false, error: "INVALID_TYPE" });
       }
@@ -331,6 +333,67 @@ chatNs.on("connection", (socket) => {
       }
       if ((input.type === "IMAGE" || input.type === "FILE") && attachments.length === 0) {
         return ack({ ok: false, error: "ATTACHMENT_REQUIRED" });
+      }
+      // 첨부 cap — DB 팽창/DoS 방지 (업로드 자체는 /api/upload에서 10MB cap)
+      const MAX_ATTACHMENTS = 10;
+      const MAX_ATTACHMENT_NAME = 200;
+      if (attachments.length > MAX_ATTACHMENTS) {
+        return ack({ ok: false, error: "TOO_MANY_ATTACHMENTS" });
+      }
+      for (const a of attachments) {
+        if (
+          !a ||
+          typeof a.url !== "string" ||
+          typeof a.name !== "string" ||
+          typeof a.mimeType !== "string" ||
+          typeof a.size !== "number"
+        ) {
+          return ack({ ok: false, error: "INVALID_ATTACHMENT" });
+        }
+        if (a.name.length > MAX_ATTACHMENT_NAME) {
+          a.name = a.name.slice(0, MAX_ATTACHMENT_NAME);
+        }
+      }
+      // CARD 메시지: cardType + cardPayload 필수, 매니저만 발신 가능
+      const allowedCardTypes = new Set([
+        "RESUME",
+        "HOUSING",
+        "PROFILE",
+        "VIDEO",
+        "PLAN",
+        "GENERIC",
+      ]);
+      const MAX_CARD_PAYLOAD_BYTES = 8_000;
+      const MAX_CARD_FIELDS = 30;
+      if (input.type === "CARD") {
+        if (socket.data.kind !== "manager") {
+          return ack({ ok: false, error: "CARD_FORBIDDEN" });
+        }
+        if (!input.cardType || !allowedCardTypes.has(input.cardType)) {
+          return ack({ ok: false, error: "INVALID_CARD_TYPE" });
+        }
+        // payload는 plain object만. 배열/null/문자열 차단.
+        if (
+          !input.cardPayload ||
+          typeof input.cardPayload !== "object" ||
+          Array.isArray(input.cardPayload)
+        ) {
+          return ack({ ok: false, error: "INVALID_CARD_PAYLOAD" });
+        }
+        // 필드 수/직렬화 크기 cap — DB 팽창 + DoS 방지
+        const keys = Object.keys(input.cardPayload);
+        if (keys.length === 0 || keys.length > MAX_CARD_FIELDS) {
+          return ack({ ok: false, error: "INVALID_CARD_PAYLOAD_SIZE" });
+        }
+        let serialized: string;
+        try {
+          serialized = JSON.stringify(input.cardPayload);
+        } catch {
+          return ack({ ok: false, error: "INVALID_CARD_PAYLOAD" });
+        }
+        if (serialized.length > MAX_CARD_PAYLOAD_BYTES) {
+          return ack({ ok: false, error: "CARD_PAYLOAD_TOO_LARGE" });
+        }
       }
       if (text.length > 4000) return ack({ ok: false, error: "TOO_LONG" });
 
@@ -354,16 +417,22 @@ chatNs.on("connection", (socket) => {
       const senderId =
         socket.data.kind === "manager" ? socket.data.managerId : null;
 
-      // 번역은 텍스트만. IMAGE/FILE은 caption(text)이 있을 때만.
+      // 번역은 TEXT/CAPTION만. IMAGE/FILE은 caption(text)이 있을 때만, CARD는 번역 안 함.
       const targetLang = isManager ? peerLang : "KO_KR";
       let translatedText: string | null = null;
-      if (text) {
+      if (text && input.type !== "CARD") {
         const r = await translateForPeer(text, input.language, targetLang);
         translatedText = r.translatedText;
       }
 
       const attachmentsJson =
         attachments.length > 0 ? JSON.stringify(attachments) : null;
+      const cardTypeFinal =
+        input.type === "CARD" ? (input.cardType ?? null) : null;
+      const cardPayloadJson =
+        input.type === "CARD" && input.cardPayload
+          ? JSON.stringify(input.cardPayload)
+          : null;
 
       const created = await prisma.$transaction(async (tx) => {
         const message = await tx.message.create({
@@ -376,6 +445,8 @@ chatNs.on("connection", (socket) => {
             language: text ? input.language : null,
             translatedText,
             attachments: attachmentsJson,
+            cardType: cardTypeFinal,
+            cardPayload: cardPayloadJson,
             isRead: isManager,
           },
         });
@@ -386,7 +457,24 @@ chatNs.on("connection", (socket) => {
             unreadCount: isManager ? undefined : { increment: 1 },
           },
         });
-        return { message, room: updated };
+        // Outbox — 메시지 손실 0 보장 (Phase 5.7)
+        // 트랜잭션 안에서 row 생성. 1차 emit 성공 시 이 row만 processedAt 마킹.
+        // 동시성: 같은 룸의 다른 in-flight 메시지를 잘못 마킹하지 않도록 row id로 구분.
+        const outbox = await tx.outbox.create({
+          data: {
+            eventType: "MESSAGE_CREATED",
+            aggregateId: input.roomId,
+            payload: JSON.stringify({
+              messageId: message.id,
+              roomId: message.roomId,
+              senderType,
+              senderId,
+              type: input.type,
+              createdAt: message.createdAt.toISOString(),
+            }),
+          },
+        });
+        return { message, room: updated, outboxId: outbox.id };
       });
 
       const event: ChatMessageEvent = {
@@ -399,6 +487,8 @@ chatNs.on("connection", (socket) => {
         language: created.message.language,
         translatedText: created.message.translatedText,
         attachments: attachments.length > 0 ? attachments : null,
+        cardType: cardTypeFinal,
+        cardPayload: input.cardPayload ?? null,
         createdAt: created.message.createdAt.toISOString(),
       };
 
@@ -408,6 +498,17 @@ chatNs.on("connection", (socket) => {
         lastMessageAt: event.createdAt,
         unreadCount: created.room.unreadCount,
       });
+
+      // Outbox immediate ack — 정확히 이 메시지의 outbox row만 마킹
+      // (워커는 미처리 row만 재방송 — 5초 후에도 unprocessed면 재시도)
+      prisma.outbox
+        .update({
+          where: { id: created.outboxId },
+          data: { processedAt: new Date() },
+        })
+        .catch(() => {
+          /* 워커가 재시도할 것 */
+        });
 
       ack({ ok: true, data: { messageId: created.message.id } });
 
@@ -427,6 +528,69 @@ chatNs.on("connection", (socket) => {
     }
   });
 
+  // Phase 5.7 — Typing indicator
+  // 신청자/매니저 모두 emit 가능. 자기 자신을 제외한 룸 멤버에게만 broadcast.
+  socket.on("chat:typing", async ({ roomId, isTyping }) => {
+    try {
+      if (typeof roomId !== "string" || !roomId) return;
+      const allowed = await canAccessRoom(roomId, socket.data);
+      if (!allowed) return;
+      const senderKind = socket.data.kind;
+      const senderId =
+        socket.data.kind === "manager"
+          ? socket.data.managerId
+          : socket.data.applicantId;
+      socket.to(roomKey(roomId)).emit("chat:typing", {
+        roomId,
+        senderKind,
+        senderId,
+        isTyping: !!isTyping,
+      });
+    } catch (e) {
+      console.error("[chat:typing] error", e);
+    }
+  });
+
+  // Phase 5.7 — Read receipt
+  // 룸 진입/스크롤 등에서 emit. DB에 isRead 마킹 + 다른 멤버에게 readAt broadcast.
+  socket.on("chat:read", async ({ roomId, lastMessageId }) => {
+    try {
+      if (typeof roomId !== "string" || !roomId) return;
+      const allowed = await canAccessRoom(roomId, socket.data);
+      if (!allowed) return;
+
+      const readAt = new Date();
+      const readerKind = socket.data.kind;
+      const readerId =
+        socket.data.kind === "manager"
+          ? socket.data.managerId
+          : socket.data.applicantId;
+
+      // 매니저가 읽음 → 신청자가 보낸 메시지 isRead 마킹
+      // 신청자가 읽음 → 매니저/시스템이 보낸 메시지 isRead 마킹
+      const peerSenderType =
+        socket.data.kind === "manager" ? "APPLICANT" : "MANAGER";
+      await prisma.message.updateMany({
+        where: {
+          roomId,
+          senderType: peerSenderType,
+          isRead: false,
+        },
+        data: { isRead: true, readAt },
+      });
+
+      socket.to(roomKey(roomId)).emit("chat:read", {
+        roomId,
+        readerKind,
+        readerId,
+        readAt: readAt.toISOString(),
+        lastMessageId: lastMessageId ?? null,
+      });
+    } catch (e) {
+      console.error("[chat:read] error", e);
+    }
+  });
+
   socket.on("disconnect", (reason) => {
     console.log(`[socket] disconnect ${label} — ${reason}`);
   });
@@ -441,6 +605,86 @@ httpServer.listen(PORT, () => {
   console.log(`  TRANSLATE: ${process.env.GOOGLE_TRANSLATE_API_KEY ? "google v2" : "mock"}`);
   console.log(`  LLM: ${process.env.ANTHROPIC_API_KEY ? "anthropic" : process.env.OPENAI_API_KEY ? "openai" : "mock"}`);
 });
+
+// ─── Outbox 워커 — 5초마다 미처리 row 재방송 ────────────────
+// 발신 즉시 emit이 1차 broadcast. 그게 실패해 processedAt가 비어 있으면
+// 워커가 메시지를 DB에서 다시 읽어 룸에 broadcast.
+// 5분 이상 미처리(crash 등) row는 attempts++ 후 재시도, 5회 초과면 lastError 남김.
+const OUTBOX_TICK_MS = 5_000;
+const OUTBOX_STALE_MS = 5_000; // 1차 emit 실패 추정 임계
+const OUTBOX_MAX_ATTEMPTS = 5;
+
+async function processOutbox() {
+  const cutoff = new Date(Date.now() - OUTBOX_STALE_MS);
+  const rows = await prisma.outbox.findMany({
+    where: {
+      processedAt: null,
+      createdAt: { lte: cutoff },
+      attempts: { lt: OUTBOX_MAX_ATTEMPTS },
+    },
+    take: 50,
+    orderBy: { createdAt: "asc" },
+  });
+  for (const row of rows) {
+    try {
+      if (row.eventType === "MESSAGE_CREATED") {
+        const payload = JSON.parse(row.payload) as {
+          messageId: string;
+          roomId: string;
+        };
+        const msg = await prisma.message.findUnique({
+          where: { id: payload.messageId },
+        });
+        if (!msg) {
+          // 메시지가 사라졌으면 outbox row 정리
+          await prisma.outbox.update({
+            where: { id: row.id },
+            data: { processedAt: new Date(), lastError: "MESSAGE_GONE" },
+          });
+          continue;
+        }
+        chatNs.to(roomKey(msg.roomId)).emit("chat:message", {
+          id: msg.id,
+          roomId: msg.roomId,
+          senderType: msg.senderType as "APPLICANT" | "MANAGER" | "SYSTEM",
+          senderId: msg.senderId,
+          type: msg.type,
+          originalText: msg.originalText,
+          language: msg.language,
+          translatedText: msg.translatedText,
+          attachments: msg.attachments
+            ? (JSON.parse(msg.attachments) as ChatMessageEvent["attachments"])
+            : null,
+          cardType: (msg.cardType ?? null) as ChatMessageEvent["cardType"],
+          cardPayload: msg.cardPayload ? JSON.parse(msg.cardPayload) : null,
+          createdAt: msg.createdAt.toISOString(),
+        });
+      }
+      await prisma.outbox.update({
+        where: { id: row.id },
+        data: { processedAt: new Date() },
+      });
+      console.log(`[outbox] redelivered ${row.eventType} ${row.id}`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message.slice(0, 200) : "unknown";
+      await prisma.outbox.update({
+        where: { id: row.id },
+        data: {
+          attempts: { increment: 1 },
+          lastError: msg,
+        },
+      });
+      console.error(`[outbox] retry failed ${row.id}:`, msg);
+    }
+  }
+}
+
+const outboxInterval = setInterval(() => {
+  processOutbox().catch((e) =>
+    console.error("[outbox] tick error", e)
+  );
+}, OUTBOX_TICK_MS);
+outboxInterval.unref?.();
 
 async function shutdown(signal: string) {
   console.log(`\n[${signal}] shutting down...`);

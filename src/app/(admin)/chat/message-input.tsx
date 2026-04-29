@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import {
   Send,
   Paperclip,
@@ -8,6 +8,7 @@ import {
   Loader2,
   X,
   FileText,
+  LayoutTemplate,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -15,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useChatSocket } from "./use-socket";
 import type { Attachment } from "@/lib/socket-types";
+import { CardSenderDialog } from "./card-sender-dialog";
 
 /**
  * 매니저 측 메시지 전송창.
@@ -37,9 +39,40 @@ export function MessageInput({
   const [pending, setPending] = useState<Attachment[]>([]);
   const fileImgRef = useRef<HTMLInputElement>(null);
   const fileDocRef = useRef<HTMLInputElement>(null);
+  const typingRef = useRef<{ active: boolean; resetTimer: ReturnType<typeof setTimeout> | null }>({
+    active: false,
+    resetTimer: null,
+  });
 
   const connected = state === "connected";
   const disabled = !connected || sending || uploading;
+
+  // typing emit — input 변화 시 1회만 true 보내고, 1.5초간 무입력 시 false
+  function notifyTyping() {
+    if (!connected) return;
+    const t = typingRef.current;
+    if (!t.active) {
+      t.active = true;
+      socket.emit("chat:typing", { roomId, isTyping: true });
+    }
+    if (t.resetTimer) clearTimeout(t.resetTimer);
+    t.resetTimer = setTimeout(() => {
+      socket.emit("chat:typing", { roomId, isTyping: false });
+      t.active = false;
+    }, 1500);
+  }
+
+  // 룸 변경/언마운트 시 typing 해제
+  useEffect(() => {
+    return () => {
+      const t = typingRef.current;
+      if (t.active) {
+        socket.emit("chat:typing", { roomId, isTyping: false });
+        t.active = false;
+      }
+      if (t.resetTimer) clearTimeout(t.resetTimer);
+    };
+  }, [roomId, socket]);
 
   async function handleFiles(files: FileList | null, kind: "IMAGE" | "FILE") {
     if (!files || files.length === 0) return;
@@ -206,6 +239,20 @@ export function MessageInput({
           >
             <Paperclip className="h-4 w-4" />
           </Button>
+          <CardSenderDialog
+            roomId={roomId}
+            trigger={
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                disabled={disabled}
+                title="카드 메시지 (요금제/주거/프로필 등)"
+              >
+                <LayoutTemplate className="h-4 w-4" />
+              </Button>
+            }
+          />
         </div>
 
         <Textarea
@@ -216,7 +263,10 @@ export function MessageInput({
           }
           className="min-h-[44px] max-h-32 resize-none"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (e.target.value) notifyTyping();
+          }}
           onKeyDown={onKeyDown}
           disabled={!connected}
           maxLength={4000}

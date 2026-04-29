@@ -42,6 +42,24 @@ function parseSourceCookie(raw: string | undefined): SourceCookie | null {
   }
 }
 
+async function resolvePartnerId(source: SourceCookie | null): Promise<string | null> {
+  if (source?.partnerId) {
+    const validated = await prisma.partner.findUnique({
+      where: { id: source.partnerId },
+      select: { id: true, isActive: true },
+    });
+    if (validated?.isActive) return validated.id;
+  }
+  if (source?.partnerCode) {
+    const validated = await prisma.partner.findUnique({
+      where: { code: source.partnerCode },
+      select: { id: true, isActive: true },
+    });
+    if (validated?.isActive) return validated.id;
+  }
+  return null;
+}
+
 export async function submitApplication(input: ApplyInput) {
   const name = input.name.trim();
   if (!name) return { ok: false, error: "이름을 입력해주세요." };
@@ -52,33 +70,25 @@ export async function submitApplication(input: ApplyInput) {
     return { ok: false, error: "개인정보 수집 동의가 필요합니다." };
 
   const cookieStore = await cookies();
-  const source = parseSourceCookie(cookieStore.get("fics_source")?.value);
+  const sourceLast = parseSourceCookie(cookieStore.get("fics_source")?.value);
+  const sourceFirst = parseSourceCookie(
+    cookieStore.get("fics_source_first")?.value
+  );
 
-  // source partner 서버 재검증 — 쿠키는 클라 변조 가능
-  // 1) 쿠키의 partnerId/code를 활성 거래처로 재확인
-  // 2) 매칭 실패 시 DIRECT 폴백
-  let sourcePartnerId: string | null = null;
-  if (source?.partnerId) {
-    const validated = await prisma.partner.findUnique({
-      where: { id: source.partnerId },
-      select: { id: true, isActive: true },
-    });
-    if (validated?.isActive) sourcePartnerId = validated.id;
-  }
-  if (!sourcePartnerId && source?.partnerCode) {
-    const validated = await prisma.partner.findUnique({
-      where: { code: source.partnerCode },
-      select: { id: true, isActive: true },
-    });
-    if (validated?.isActive) sourcePartnerId = validated.id;
-  }
-  if (!sourcePartnerId) {
+  // 서버 재검증 — 쿠키는 클라 변조 가능
+  let lastPartnerId = await resolvePartnerId(sourceLast);
+  let firstPartnerId = await resolvePartnerId(sourceFirst);
+
+  // last-touch 폴백 → DIRECT
+  if (!lastPartnerId) {
     const direct = await prisma.partner.findUnique({
       where: { code: "DIRECT" },
       select: { id: true },
     });
-    sourcePartnerId = direct?.id ?? null;
+    lastPartnerId = direct?.id ?? null;
   }
+  // first-touch가 없으면 last-touch와 동일 (직진 가입자)
+  if (!firstPartnerId) firstPartnerId = lastPartnerId;
 
   // 길이 제한 — DB 저장 안전망
   const trim = (v: string | null | undefined, max = 200) =>
@@ -107,11 +117,23 @@ export async function submitApplication(input: ApplyInput) {
         thirdPartyConsent: !!input.thirdPartyConsent,
         status: "PENDING",
         appliedPlanId,
-        sourcePartnerId,
-        sourceCampaign: trim(source?.campaign, 100),
-        sourceMedium: trim(source?.medium, 50),
-        sourceReferrer: trim(source?.referrer, 500),
-        sourceLandedAt: source?.landedAt ? new Date(source.landedAt) : null,
+        // last-touch
+        sourcePartnerId: lastPartnerId,
+        sourceCampaign: trim(sourceLast?.campaign, 100),
+        sourceMedium: trim(sourceLast?.medium, 50),
+        sourceReferrer: trim(sourceLast?.referrer, 500),
+        sourceLandedAt: sourceLast?.landedAt
+          ? new Date(sourceLast.landedAt)
+          : null,
+        // first-touch
+        firstTouchPartnerId: firstPartnerId,
+        firstTouchCampaign: trim(sourceFirst?.campaign ?? sourceLast?.campaign, 100),
+        firstTouchMedium: trim(sourceFirst?.medium ?? sourceLast?.medium, 50),
+        firstTouchLandedAt: sourceFirst?.landedAt
+          ? new Date(sourceFirst.landedAt)
+          : sourceLast?.landedAt
+            ? new Date(sourceLast.landedAt)
+            : null,
       },
     });
     const room = await tx.chatRoom.create({
@@ -122,7 +144,8 @@ export async function submitApplication(input: ApplyInput) {
     return { applicant, room };
   });
 
-  // 추적 쿠키는 가입 완료 후 정리 (다음 유입을 깨끗하게)
+  // last-touch 쿠키만 정리 (다음 유입 캠페인을 깨끗하게)
+  // first-touch 쿠키는 유지 — 같은 사람이 재방문/재가입 시에도 첫 채널 추적
   cookieStore.delete("fics_source");
 
   redirect(`/c/${result.room.id}`);

@@ -57,6 +57,8 @@ export default async function CustomerChatPage({
           language: true,
           translatedText: true,
           attachments: true,
+          cardType: true,
+          cardPayload: true,
           createdAt: true,
         },
       },

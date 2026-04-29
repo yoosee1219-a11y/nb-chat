@@ -11,6 +11,24 @@ export type Ack<T = void> =
   | { ok: true; data?: T }
   | { ok: false; error: string };
 
+// ─── 카드 페이로드 (Phase 5.7) ─────────────────────────
+// CardType별 형태가 다르지만 클라/서버 둘 다 JSON으로 다룸 (강타입은 컴포넌트단)
+// PLAN: { planId, name, monthlyFee, dataAllowance, voiceMinutes, commitment }
+// VIDEO: { url, thumbnail, title }
+// PROFILE: { applicantId, name, nationality, language }
+// HOUSING: { title, region, link }
+// RESUME: { fields: { name, age, ... } }
+// GENERIC: { title, body, link?, image? }
+export type CardType =
+  | "RESUME"
+  | "HOUSING"
+  | "PROFILE"
+  | "VIDEO"
+  | "PLAN"
+  | "GENERIC";
+
+export type CardPayload = Record<string, unknown>;
+
 // ─── 클라이언트 → 서버 ─────────────────────────────
 export interface ClientToServerEvents {
   "chat:subscribe": (
@@ -21,6 +39,11 @@ export interface ClientToServerEvents {
   "chat:send": (
     payload: SendMessageInput,
     ack: (res: Ack<{ messageId: string }>) => void
+  ) => void;
+  // Phase 5.7 — 입력 중 / 읽음 표시
+  "chat:typing": (payload: { roomId: string; isTyping: boolean }) => void;
+  "chat:read": (
+    payload: { roomId: string; lastMessageId?: string }
   ) => void;
 }
 
@@ -33,16 +56,22 @@ export type Attachment = {
 
 export type SendMessageInput = {
   roomId: string;
-  type: "TEXT" | "IMAGE" | "FILE";
+  type: "TEXT" | "IMAGE" | "FILE" | "CARD";
   originalText: string;
   language: string; // BCP-47 underscore variant (KO_KR, RU_RU, ...)
   attachments?: Attachment[];
+  // CARD 메시지 전용 (type === "CARD"일 때만 사용)
+  cardType?: CardType;
+  cardPayload?: CardPayload;
 };
 
 // ─── 서버 → 클라이언트 ─────────────────────────────
 export interface ServerToClientEvents {
   "chat:message": (msg: ChatMessageEvent) => void;
   "chat:room-updated": (data: RoomUpdatedEvent) => void;
+  // Phase 5.7
+  "chat:typing": (data: TypingEvent) => void;
+  "chat:read": (data: ReadEvent) => void;
 }
 
 export type ChatMessageEvent = {
@@ -55,6 +84,8 @@ export type ChatMessageEvent = {
   language: string | null;
   translatedText: string | null;
   attachments: Attachment[] | null;
+  cardType: CardType | null;
+  cardPayload: CardPayload | null;
   createdAt: string; // ISO
 };
 
@@ -62,6 +93,21 @@ export type RoomUpdatedEvent = {
   roomId: string;
   lastMessageAt: string; // ISO
   unreadCount: number;
+};
+
+export type TypingEvent = {
+  roomId: string;
+  senderKind: "manager" | "applicant";
+  senderId: string | null;
+  isTyping: boolean;
+};
+
+export type ReadEvent = {
+  roomId: string;
+  readerKind: "manager" | "applicant";
+  readerId: string | null;
+  readAt: string; // ISO
+  lastMessageId: string | null;
 };
 
 // 서버에 attach되는 socket.data 형태 (discriminated union)

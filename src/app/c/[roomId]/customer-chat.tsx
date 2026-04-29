@@ -16,7 +16,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { createApplicantSocket } from "@/lib/socket-client";
-import type { ChatMessageEvent, Attachment } from "@/lib/socket-types";
+import type {
+  ChatMessageEvent,
+  Attachment,
+  CardType,
+  TypingEvent,
+} from "@/lib/socket-types";
+import { MessageCard, parseCardPayload } from "@/app/(admin)/chat/message-card";
 
 type Message = {
   id: string;
@@ -26,6 +32,8 @@ type Message = {
   language: string | null;
   translatedText: string | null;
   attachments: string | null;
+  cardType: string | null;
+  cardPayload: string | null;
   createdAt: string;
 };
 
@@ -73,11 +81,17 @@ export function CustomerChat({
   const [pending, setPending] = useState<Attachment[]>([]);
   const [connected, setConnected] = useState(false);
   const [showOriginal, setShowOriginal] = useState<Record<string, boolean>>({});
+  const [peerTyping, setPeerTyping] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const socketRef = useRef<ReturnType<typeof createApplicantSocket> | null>(
     null
   );
+  const typingRef = useRef<{
+    active: boolean;
+    resetTimer: ReturnType<typeof setTimeout> | null;
+  }>({ active: false, resetTimer: null });
+  const peerTypingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 스크롤 자동 하단
   useEffect(() => {
@@ -116,17 +130,55 @@ export function CustomerChat({
             attachments: event.attachments
               ? JSON.stringify(event.attachments)
               : null,
+            cardType: event.cardType,
+            cardPayload: event.cardPayload
+              ? JSON.stringify(event.cardPayload)
+              : null,
             createdAt: event.createdAt,
           },
         ];
       });
+      // 새 메시지 도착 → typing 자동 해제 + read 신호
+      setPeerTyping(false);
+      sock.emit("chat:read", { roomId, lastMessageId: event.id });
+    });
+
+    sock.on("chat:typing", (data: TypingEvent) => {
+      if (data.roomId !== roomId) return;
+      // 본인(applicant) 신호는 무시 — 매니저 typing만 표시
+      if (data.senderKind !== "manager") return;
+      setPeerTyping(data.isTyping);
+      if (data.isTyping) {
+        if (peerTypingTimerRef.current) clearTimeout(peerTypingTimerRef.current);
+        peerTypingTimerRef.current = setTimeout(
+          () => setPeerTyping(false),
+          4000
+        );
+      }
     });
 
     return () => {
       sock.disconnect();
       socketRef.current = null;
+      if (peerTypingTimerRef.current) clearTimeout(peerTypingTimerRef.current);
     };
   }, [roomId, token]);
+
+  // 신청자 typing emit (1.5초 throttle)
+  function notifyTyping() {
+    const sock = socketRef.current;
+    if (!sock || !connected) return;
+    const t = typingRef.current;
+    if (!t.active) {
+      t.active = true;
+      sock.emit("chat:typing", { roomId, isTyping: true });
+    }
+    if (t.resetTimer) clearTimeout(t.resetTimer);
+    t.resetTimer = setTimeout(() => {
+      sock.emit("chat:typing", { roomId, isTyping: false });
+      t.active = false;
+    }, 1500);
+  }
 
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
@@ -304,6 +356,19 @@ export function CustomerChat({
                           )}
                         </div>
                       )}
+                      {m.type === "CARD" && m.cardType && (() => {
+                        const payload = parseCardPayload(m.cardPayload);
+                        if (!payload) return null;
+                        return (
+                          <div className="mb-1">
+                            <MessageCard
+                              cardType={m.cardType as CardType}
+                              payload={payload}
+                              onSurface={isMe ? "primary" : "muted"}
+                            />
+                          </div>
+                        );
+                      })()}
                       {primary && (
                         <p className="whitespace-pre-wrap">{primary}</p>
                       )}
@@ -346,6 +411,17 @@ export function CustomerChat({
               );
             })}
           </ol>
+        )}
+        {peerTyping && (
+          <div className="mt-2 flex justify-start">
+            <div className="rounded-2xl rounded-bl-sm bg-white px-3 py-2 shadow-sm">
+              <div className="flex items-center gap-1">
+                <span className="size-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:0ms]" />
+                <span className="size-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:150ms]" />
+                <span className="size-1.5 animate-bounce rounded-full bg-gray-400 [animation-delay:300ms]" />
+              </div>
+            </div>
+          </div>
         )}
         <div ref={endRef} />
       </main>
@@ -406,7 +482,10 @@ export function CustomerChat({
           </Button>
           <Textarea
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              if (e.target.value) notifyTyping();
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();

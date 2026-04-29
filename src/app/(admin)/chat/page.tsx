@@ -173,6 +173,9 @@ function SelectedRoomView({
     language: string | null;
     translatedText: string | null;
     attachments: string | null;
+    cardType: string | null;
+    cardPayload: string | null;
+    isRead: boolean;
     createdAt: Date;
   }>;
 }) {
@@ -245,7 +248,11 @@ function SelectedRoomView({
 
       {/* 메시지 패널 */}
       <div className="min-h-0 flex-1">
-        <MessagePanel messages={messages} applicantName={applicant.name} />
+        <MessagePanel
+          roomId={selectedRoomId}
+          messages={messages}
+          applicantName={applicant.name}
+        />
       </div>
 
       {/* 입력창 */}

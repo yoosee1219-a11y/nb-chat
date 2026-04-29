@@ -3,10 +3,13 @@
 import { useState, useEffect, useRef } from "react";
 import { format, formatDistanceToNow } from "date-fns";
 import { ko } from "date-fns/locale";
-import { Languages } from "lucide-react";
+import { Check, CheckCheck, Languages } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LANGUAGE } from "@/lib/constants";
+import type { CardType, TypingEvent } from "@/lib/socket-types";
+import { MessageCard, parseCardPayload } from "./message-card";
+import { useChatSocket } from "./use-socket";
 
 type MessageItem = {
   id: string;
@@ -16,6 +19,9 @@ type MessageItem = {
   language: string | null;
   translatedText: string | null;
   attachments: string | null; // JSON 직렬화
+  cardType: string | null;
+  cardPayload: string | null; // JSON 직렬화
+  isRead: boolean;
   createdAt: Date;
 };
 
@@ -43,19 +49,49 @@ function parseAttachments(raw: string | null): ParsedAttachment[] {
  * - SYSTEM 메시지: 가운데 정렬, 회색
  */
 export function MessagePanel({
+  roomId,
   messages,
   applicantName,
 }: {
+  roomId: string;
   messages: MessageItem[];
   applicantName: string;
 }) {
   const [showOriginal, setShowOriginal] = useState<Record<string, boolean>>({});
+  const [peerTyping, setPeerTyping] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   // 새 메시지 도착 시 자동 스크롤 (sentinel into view)
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
   }, [messages.length]);
+
+  // 새 메시지 도착 → typing은 자동 해제
+  useEffect(() => {
+    setPeerTyping(false);
+  }, [messages.length]);
+
+  // 상대방 typing 이벤트 구독 — applicant가 입력 중일 때만 표시
+  // (RealtimeBridge가 룸 subscribe를 이미 함)
+  const { socket } = useChatSocket();
+  useEffect(() => {
+    let resetTimer: ReturnType<typeof setTimeout> | null = null;
+    const onTyping = (data: TypingEvent) => {
+      if (data.roomId !== roomId) return;
+      if (data.senderKind !== "applicant") return;
+      setPeerTyping(data.isTyping);
+      if (data.isTyping) {
+        if (resetTimer) clearTimeout(resetTimer);
+        // 4초 동안 후속 typing 신호 없으면 자동 해제
+        resetTimer = setTimeout(() => setPeerTyping(false), 4000);
+      }
+    };
+    socket.on("chat:typing", onTyping);
+    return () => {
+      socket.off("chat:typing", onTyping);
+      if (resetTimer) clearTimeout(resetTimer);
+    };
+  }, [roomId, socket]);
 
   if (messages.length === 0) {
     return (
@@ -141,6 +177,19 @@ export function MessagePanel({
                       )}
                     </div>
                   )}
+                  {m.type === "CARD" && m.cardType && (() => {
+                    const payload = parseCardPayload(m.cardPayload);
+                    if (!payload) return null;
+                    return (
+                      <div className="mb-1">
+                        <MessageCard
+                          cardType={m.cardType as CardType}
+                          payload={payload}
+                          onSurface={isManager ? "primary" : "muted"}
+                        />
+                      </div>
+                    );
+                  })()}
                   {(primary || secondary) && (
                     <p className="whitespace-pre-wrap text-sm leading-relaxed">
                       {primary ?? secondary}
@@ -185,6 +234,18 @@ export function MessagePanel({
                       {applicantName}
                     </Badge>
                   )}
+                  {isManager && (
+                    <span
+                      title={m.isRead ? "읽음" : "전송됨"}
+                      className={m.isRead ? "text-blue-500" : "opacity-60"}
+                    >
+                      {m.isRead ? (
+                        <CheckCheck className="h-3 w-3" />
+                      ) : (
+                        <Check className="h-3 w-3" />
+                      )}
+                    </span>
+                  )}
                   {secondary && (
                     <Button
                       variant="ghost"
@@ -206,6 +267,20 @@ export function MessagePanel({
             </div>
           );
         })}
+        {peerTyping && (
+          <div className="flex justify-start">
+            <div className="rounded-2xl bg-muted px-3.5 py-2">
+              <div className="flex items-center gap-1">
+                <span className="size-1.5 animate-bounce rounded-full bg-foreground/60 [animation-delay:0ms]" />
+                <span className="size-1.5 animate-bounce rounded-full bg-foreground/60 [animation-delay:150ms]" />
+                <span className="size-1.5 animate-bounce rounded-full bg-foreground/60 [animation-delay:300ms]" />
+                <span className="ml-2 text-[10px] text-muted-foreground">
+                  {applicantName} 입력 중…
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
         <div ref={endRef} />
       </div>
     </div>
