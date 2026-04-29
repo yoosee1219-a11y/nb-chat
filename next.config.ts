@@ -43,10 +43,12 @@ const securityHeaders = [
     value: [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-      "style-src 'self' 'unsafe-inline'",
+      // style: self + inline + Google Fonts + jsDelivr (Pretendard CDN fallback)
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
       "img-src 'self' data: blob: https:",
-      "font-src 'self' data:",
-      `connect-src 'self' ${socketOrigin} ${wsOrigin} https://translation.googleapis.com https://translate.googleapis.com`,
+      // font: self + data + gstatic + jsDelivr
+      "font-src 'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net",
+      `connect-src 'self' ${socketOrigin} ${wsOrigin} https://translation.googleapis.com https://translate.googleapis.com https://api.anthropic.com https://api.openai.com https://*.turso.io`,
       "media-src 'self' blob:",
       "object-src 'none'",
       "frame-ancestors 'self'",
