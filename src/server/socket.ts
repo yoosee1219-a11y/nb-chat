@@ -21,6 +21,7 @@ import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { PrismaClient } from "../generated/prisma/client";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaLibSql } from "@prisma/adapter-libsql";
 import { translateForPeer } from "../lib/translation";
 import { verifyAnyToken } from "../lib/socket-auth";
 import { executeFlow, type ApplicantContext } from "../lib/flow-runtime";
@@ -51,8 +52,26 @@ if (!process.env.DATABASE_URL) {
 
 const SECRET = new TextEncoder().encode(process.env.AUTH_SECRET);
 
+const dbUrl = process.env.DATABASE_URL!;
+let dbAdapter;
+if (dbUrl.startsWith("libsql:") || dbUrl.startsWith("https:")) {
+  let cleanUrl = dbUrl;
+  let authToken = process.env.DATABASE_AUTH_TOKEN;
+  try {
+    const u = new URL(dbUrl);
+    const tokenFromQuery = u.searchParams.get("authToken");
+    if (tokenFromQuery) {
+      authToken = tokenFromQuery;
+      u.searchParams.delete("authToken");
+      cleanUrl = u.toString();
+    }
+  } catch {}
+  dbAdapter = new PrismaLibSql({ url: cleanUrl, authToken });
+} else {
+  dbAdapter = new PrismaBetterSqlite3({ url: dbUrl });
+}
 const prisma = new PrismaClient({
-  adapter: new PrismaBetterSqlite3({ url: process.env.DATABASE_URL }),
+  adapter: dbAdapter,
   log: ["error", "warn"],
 });
 
