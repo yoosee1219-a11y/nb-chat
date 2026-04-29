@@ -155,7 +155,43 @@ async function main() {
   after.rows.forEach((r) => console.log(`  - ${r.name}`));
 }
 
+/**
+ * 첫 ADMIN 매니저 자동 생성 (managers 테이블이 비어 있을 때만).
+ * prod 환경의 chicken-and-egg 해결 — 회원가입 페이지가 없어서 첫 ADMIN은 시드로만.
+ *
+ * 환경변수:
+ *   SEED_ADMIN_EMAIL    (기본: admin@fics.local)
+ *   SEED_ADMIN_PASSWORD (기본: admin123)
+ *
+ * 보안 주의:
+ *  - 첫 로그인 후 즉시 비밀번호 변경 권장
+ *  - 또는 Vercel env에 SEED_ADMIN_PASSWORD를 강한 값으로 설정
+ */
+async function ensureFirstAdmin() {
+  const cnt = await client.execute("SELECT COUNT(*) as c FROM managers");
+  const count = Number(cnt.rows[0]?.c ?? 0);
+  if (count > 0) {
+    console.log(`▶ 매니저 이미 ${count}명 존재 — 시드 skip`);
+    return;
+  }
+  const email = process.env.SEED_ADMIN_EMAIL?.trim() || "admin@fics.local";
+  const password = process.env.SEED_ADMIN_PASSWORD?.trim() || "admin123";
+
+  // bcryptjs로 해시 — package.json dependency에 이미 있음
+  const bcrypt = await import("bcryptjs");
+  const passwordHash = await bcrypt.hash(password, 10);
+  const id = `seed-admin-${Date.now()}`;
+
+  await client.execute({
+    sql: `INSERT INTO managers (id, email, name, passwordHash, role, isActive, createdAt, updatedAt)
+          VALUES (?, ?, ?, ?, 'ADMIN', 1, datetime('now'), datetime('now'))`,
+    args: [id, email, "관리자", passwordHash],
+  });
+  console.log(`✓ 첫 ADMIN 매니저 생성: ${email} (비밀번호: ${password === "admin123" ? "admin123 — 즉시 변경 권장" : "ENV 값"})`);
+}
+
 main()
+  .then(() => ensureFirstAdmin())
   .then(() => {
     console.log("\n=== Turso incremental 마이그레이션 완료 ===");
     process.exit(0);
