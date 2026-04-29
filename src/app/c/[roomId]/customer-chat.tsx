@@ -21,6 +21,8 @@ import type {
   Attachment,
   CardType,
   TypingEvent,
+  MessageUpdatedEvent,
+  MessageDeletedEvent,
 } from "@/lib/socket-types";
 import { MessageCard, parseCardPayload } from "@/app/(admin)/chat/message-card";
 
@@ -34,6 +36,8 @@ type Message = {
   attachments: string | null;
   cardType: string | null;
   cardPayload: string | null;
+  editedAt: string | null;
+  deletedAt: string | null;
   createdAt: string;
 };
 
@@ -134,6 +138,8 @@ export function CustomerChat({
             cardPayload: event.cardPayload
               ? JSON.stringify(event.cardPayload)
               : null,
+            editedAt: null,
+            deletedAt: null,
             createdAt: event.createdAt,
           },
         ];
@@ -155,6 +161,41 @@ export function CustomerChat({
           4000
         );
       }
+    });
+
+    sock.on("chat:message-updated", (data: MessageUpdatedEvent) => {
+      if (data.roomId !== roomId) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === data.messageId
+            ? {
+                ...m,
+                originalText: data.originalText,
+                language: data.language,
+                translatedText: data.translatedText,
+                editedAt: data.editedAt,
+              }
+            : m
+        )
+      );
+    });
+
+    sock.on("chat:message-deleted", (data: MessageDeletedEvent) => {
+      if (data.roomId !== roomId) return;
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === data.messageId
+            ? {
+                ...m,
+                originalText: null,
+                translatedText: null,
+                attachments: null,
+                cardPayload: null,
+                deletedAt: data.deletedAt,
+              }
+            : m
+        )
+      );
     });
 
     return () => {
@@ -286,6 +327,20 @@ export function CustomerChat({
                 );
               }
 
+              if (m.deletedAt) {
+                const right = m.senderType === "APPLICANT";
+                return (
+                  <li
+                    key={m.id}
+                    className={`flex ${right ? "justify-end" : "justify-start"}`}
+                  >
+                    <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-3 py-1.5 text-[11px] italic text-gray-500">
+                      삭제된 메시지입니다
+                    </div>
+                  </li>
+                );
+              }
+
               const isMe = m.senderType === "APPLICANT";
               const isBot = m.senderType === "SYSTEM";
               const open = !!showOriginal[m.id];
@@ -405,6 +460,9 @@ export function CustomerChat({
                         hour: "2-digit",
                         minute: "2-digit",
                       })}
+                      {m.editedAt && (
+                        <span className="ml-1 italic opacity-70">(수정됨)</span>
+                      )}
                     </span>
                   </div>
                 </li>

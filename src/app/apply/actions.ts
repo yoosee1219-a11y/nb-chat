@@ -3,6 +3,10 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
+import {
+  verifySourceCookie,
+  type SourcePayload,
+} from "@/lib/source-cookie";
 
 export type ApplyInput = {
   name: string;
@@ -16,33 +20,7 @@ export type ApplyInput = {
   thirdPartyConsent: boolean;
 };
 
-type SourceCookie = {
-  partnerId: string | null;
-  partnerCode: string | null;
-  campaign: string | null;
-  medium: string | null;
-  referrer: string | null;
-  landedAt: string | null;
-};
-
-function parseSourceCookie(raw: string | undefined): SourceCookie | null {
-  if (!raw) return null;
-  try {
-    const j = JSON.parse(raw);
-    return {
-      partnerId: j.partnerId ?? null,
-      partnerCode: j.partnerCode ?? null,
-      campaign: j.campaign ?? null,
-      medium: j.medium ?? null,
-      referrer: j.referrer ?? null,
-      landedAt: j.landedAt ?? null,
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function resolvePartnerId(source: SourceCookie | null): Promise<string | null> {
+async function resolvePartnerId(source: SourcePayload | null): Promise<string | null> {
   if (source?.partnerId) {
     const validated = await prisma.partner.findUnique({
       where: { id: source.partnerId },
@@ -70,8 +48,9 @@ export async function submitApplication(input: ApplyInput) {
     return { ok: false, error: "개인정보 수집 동의가 필요합니다." };
 
   const cookieStore = await cookies();
-  const sourceLast = parseSourceCookie(cookieStore.get("fics_source")?.value);
-  const sourceFirst = parseSourceCookie(
+  // HMAC 서명 검증 — 변조된 쿠키는 null 반환 → DIRECT 폴백
+  const sourceLast = verifySourceCookie(cookieStore.get("fics_source")?.value);
+  const sourceFirst = verifySourceCookie(
     cookieStore.get("fics_source_first")?.value
   );
 

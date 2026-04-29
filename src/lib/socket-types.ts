@@ -45,6 +45,15 @@ export interface ClientToServerEvents {
   "chat:read": (
     payload: { roomId: string; lastMessageId?: string }
   ) => void;
+  // Phase 5.8 — 메시지 수정/삭제 (매니저 본인 메시지에 한정)
+  "chat:edit": (
+    payload: { roomId: string; messageId: string; originalText: string; language: string },
+    ack: (res: Ack) => void
+  ) => void;
+  "chat:delete": (
+    payload: { roomId: string; messageId: string },
+    ack: (res: Ack) => void
+  ) => void;
 }
 
 export type Attachment = {
@@ -72,7 +81,25 @@ export interface ServerToClientEvents {
   // Phase 5.7
   "chat:typing": (data: TypingEvent) => void;
   "chat:read": (data: ReadEvent) => void;
+  // Phase 5.8 — 메시지 수정/삭제 broadcast
+  "chat:message-updated": (data: MessageUpdatedEvent) => void;
+  "chat:message-deleted": (data: MessageDeletedEvent) => void;
 }
+
+export type MessageUpdatedEvent = {
+  roomId: string;
+  messageId: string;
+  originalText: string | null;
+  language: string | null;
+  translatedText: string | null;
+  editedAt: string; // ISO
+};
+
+export type MessageDeletedEvent = {
+  roomId: string;
+  messageId: string;
+  deletedAt: string; // ISO
+};
 
 export type ChatMessageEvent = {
   id: string;

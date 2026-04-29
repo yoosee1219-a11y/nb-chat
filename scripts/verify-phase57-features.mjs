@@ -13,6 +13,17 @@ const fail = (msg) => {
   process.exit(1);
 };
 
+// HMAC 서명 형식 (payloadB64.sigB64) 또는 레거시 JSON 둘 다 지원
+function parseSourceCookie(rawValue) {
+  const raw = decodeURIComponent(rawValue);
+  if (raw.includes(".")) {
+    const payloadB64 = raw.slice(0, raw.lastIndexOf("."));
+    const padded = payloadB64.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (payloadB64.length % 4)) % 4);
+    return JSON.parse(Buffer.from(padded, "base64").toString("utf-8"));
+  }
+  return JSON.parse(raw);
+}
+
 const db = new Database("./dev.db");
 const beforeCount = db
   .prepare("SELECT COUNT(*) as c FROM partner_clicks")
@@ -47,8 +58,8 @@ try {
     if (!last) fail("[1] last 쿠키 없음");
     if (!first) fail("[1] first 쿠키 없음");
 
-    const lastP = JSON.parse(decodeURIComponent(last.value));
-    const firstP = JSON.parse(decodeURIComponent(first.value));
+    const lastP = parseSourceCookie(last.value);
+    const firstP = parseSourceCookie(first.value);
     if (lastP.partnerCode !== "stealup") fail(`[1] last partner mismatch: ${lastP.partnerCode}`);
     if (firstP.partnerCode !== "stealup") fail(`[1] first partner mismatch`);
     if (lastP.campaign !== "phase57-first") fail("[1] last campaign mismatch");
@@ -61,8 +72,8 @@ try {
     const cookies2 = await p.cookies();
     const last2 = cookies2.find((c) => c.name === "fics_source");
     const first2 = cookies2.find((c) => c.name === "fics_source_first");
-    const last2P = JSON.parse(decodeURIComponent(last2.value));
-    const first2P = JSON.parse(decodeURIComponent(first2.value));
+    const last2P = parseSourceCookie(last2.value);
+    const first2P = parseSourceCookie(first2.value);
     if (last2P.partnerCode !== "workon") fail(`[1] 2nd last 갱신 안됨: ${last2P.partnerCode}`);
     if (first2P.partnerCode !== "stealup")
       fail(`[1] first가 덮어써짐: ${first2P.partnerCode}`);
@@ -84,7 +95,7 @@ try {
     const cookies = await p.cookies();
     const last = cookies.find((c) => c.name === "fics_source");
     if (!last) fail("[2] 잘못된 코드도 last 쿠키 없으면 안 됨");
-    const lastP = JSON.parse(decodeURIComponent(last.value));
+    const lastP = parseSourceCookie(last.value);
     if (lastP.partnerCode !== "DIRECT") fail("[2] DIRECT 폴백 실패");
     console.log("✓ [2] 잘못된 코드 → DIRECT 폴백 + 쿠키 set");
     pass++;

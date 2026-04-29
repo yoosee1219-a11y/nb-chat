@@ -213,6 +213,11 @@ model Message {
   // 메타
   isRead    Boolean   @default(false)
   readAt    DateTime?
+  // 수정/삭제 (Phase 5.8) — soft-delete 정책
+  // editedAt: 매니저가 본문 수정 시 갱신
+  // deletedAt: 삭제 시 set, originalText/translatedText/cardPayload null로 비움
+  editedAt  DateTime?
+  deletedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime?
 

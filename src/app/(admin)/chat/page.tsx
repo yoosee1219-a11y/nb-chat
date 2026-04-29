@@ -88,15 +88,28 @@ export default async function ChatPage({
   const selectedRoomId =
     roomIdParam ?? roomItems[0]?.id ?? null;
 
+  // 초기 50개 메시지만 (최신순으로 take 후 reverse) — Phase 5.8 lazy load
+  const MESSAGE_PAGE_SIZE = 50;
   const selectedRoom = selectedRoomId
     ? await prisma.chatRoom.findUnique({
         where: { id: selectedRoomId },
         include: {
           applicant: { include: { appliedPlan: true } },
-          messages: { orderBy: { createdAt: "asc" } },
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: MESSAGE_PAGE_SIZE,
+          },
         },
       })
     : null;
+  // RSC로 가져온 messages는 desc → 화면은 asc 필요
+  const orderedMessages = selectedRoom
+    ? [...selectedRoom.messages].reverse()
+    : [];
+  // 다음 페이지 존재 여부 — 정확히 PAGE_SIZE만큼 가져왔으면 더 있을 가능성
+  const hasMoreMessages = selectedRoom
+    ? selectedRoom.messages.length === MESSAGE_PAGE_SIZE
+    : false;
 
   // ───── 렌더 ─────
   return (
@@ -121,7 +134,8 @@ export default async function ChatPage({
             isAssignedToMe={selectedRoom.managerId === session.managerId}
             isUnassigned={selectedRoom.managerId === null}
             applicant={selectedRoom.applicant}
-            messages={selectedRoom.messages}
+            messages={orderedMessages}
+            hasMoreMessages={hasMoreMessages}
           />
         ) : (
           <EmptyState />
@@ -151,6 +165,7 @@ function SelectedRoomView({
   isUnassigned,
   applicant,
   messages,
+  hasMoreMessages,
 }: {
   session: { managerId: string };
   sidePanelOpen: boolean;
@@ -158,6 +173,7 @@ function SelectedRoomView({
   unreadCount: number;
   isAssignedToMe: boolean;
   isUnassigned: boolean;
+  hasMoreMessages: boolean;
   applicant: {
     id: string;
     name: string;
@@ -168,6 +184,7 @@ function SelectedRoomView({
   messages: Array<{
     id: string;
     senderType: string;
+    senderId: string | null;
     type: string;
     originalText: string | null;
     language: string | null;
@@ -176,6 +193,8 @@ function SelectedRoomView({
     cardType: string | null;
     cardPayload: string | null;
     isRead: boolean;
+    editedAt: Date | null;
+    deletedAt: Date | null;
     createdAt: Date;
   }>;
 }) {
@@ -252,6 +271,8 @@ function SelectedRoomView({
           roomId={selectedRoomId}
           messages={messages}
           applicantName={applicant.name}
+          currentManagerId={session.managerId}
+          hasMoreMessages={hasMoreMessages}
         />
       </div>
 

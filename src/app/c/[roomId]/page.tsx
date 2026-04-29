@@ -59,6 +59,8 @@ export default async function CustomerChatPage({
           attachments: true,
           cardType: true,
           cardPayload: true,
+          editedAt: true,
+          deletedAt: true,
           createdAt: true,
         },
       },
@@ -85,6 +87,8 @@ export default async function CustomerChatPage({
       initialMessages={room.messages.map((m) => ({
         ...m,
         createdAt: m.createdAt.toISOString(),
+        editedAt: m.editedAt ? m.editedAt.toISOString() : null,
+        deletedAt: m.deletedAt ? m.deletedAt.toISOString() : null,
       }))}
     />
   );

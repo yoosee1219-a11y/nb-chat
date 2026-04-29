@@ -130,9 +130,17 @@ try {
       continue;
     }
 
+    // Phase 5.8 — HMAC 형식 (payloadB64.sigB64) 또는 레거시 JSON
     let parsed;
     try {
-      parsed = JSON.parse(decodeURIComponent(sourceCookie.value));
+      const raw = decodeURIComponent(sourceCookie.value);
+      if (raw.includes(".")) {
+        const payloadB64 = raw.slice(0, raw.lastIndexOf("."));
+        const padded = payloadB64.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (payloadB64.length % 4)) % 4);
+        parsed = JSON.parse(Buffer.from(padded, "base64").toString("utf-8"));
+      } else {
+        parsed = JSON.parse(raw);
+      }
     } catch (e) {
       console.log(`✗ [${s.name}] 쿠키 파싱 실패: ${e.message}`);
       await ctx.close();

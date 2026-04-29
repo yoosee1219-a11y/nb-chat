@@ -591,6 +591,132 @@ chatNs.on("connection", (socket) => {
     }
   });
 
+  // Phase 5.8 — 메시지 수정 (매니저 본인 메시지에 한정)
+  socket.on("chat:edit", async ({ roomId, messageId, originalText, language }, ack) => {
+    try {
+      if (socket.data.kind !== "manager") {
+        return ack({ ok: false, error: "FORBIDDEN" });
+      }
+      const text = originalText?.trim() ?? "";
+      if (!text) return ack({ ok: false, error: "EMPTY_TEXT" });
+      if (text.length > 4000) return ack({ ok: false, error: "TOO_LONG" });
+
+      const allowed = await canAccessRoom(roomId, socket.data);
+      if (!allowed) return ack({ ok: false, error: "FORBIDDEN" });
+
+      const msg = await prisma.message.findUnique({
+        where: { id: messageId },
+        select: {
+          id: true,
+          roomId: true,
+          senderType: true,
+          senderId: true,
+          type: true,
+          deletedAt: true,
+        },
+      });
+      if (!msg || msg.roomId !== roomId)
+        return ack({ ok: false, error: "MESSAGE_NOT_FOUND" });
+      if (msg.deletedAt) return ack({ ok: false, error: "ALREADY_DELETED" });
+      if (msg.senderType !== "MANAGER" || msg.senderId !== socket.data.managerId)
+        return ack({ ok: false, error: "NOT_OWNER" });
+      if (msg.type !== "TEXT")
+        return ack({ ok: false, error: "ONLY_TEXT_EDITABLE" });
+
+      // 신청자 언어로 재번역
+      const room = await prisma.chatRoom.findUnique({
+        where: { id: roomId },
+        select: { applicant: { select: { preferredLanguage: true } } },
+      });
+      if (!room) return ack({ ok: false, error: "ROOM_NOT_FOUND" });
+
+      const r = await translateForPeer(
+        text,
+        language,
+        room.applicant.preferredLanguage
+      );
+
+      const editedAt = new Date();
+      await prisma.message.update({
+        where: { id: messageId },
+        data: {
+          originalText: text,
+          language,
+          translatedText: r.translatedText,
+          editedAt,
+        },
+      });
+
+      chatNs.to(roomKey(roomId)).emit("chat:message-updated", {
+        roomId,
+        messageId,
+        originalText: text,
+        language,
+        translatedText: r.translatedText,
+        editedAt: editedAt.toISOString(),
+      });
+
+      ack({ ok: true });
+    } catch (err) {
+      console.error("[chat:edit] error", err);
+      ack({ ok: false, error: "INTERNAL_ERROR" });
+    }
+  });
+
+  // Phase 5.8 — 메시지 삭제 (soft-delete, 매니저 본인 메시지에 한정)
+  socket.on("chat:delete", async ({ roomId, messageId }, ack) => {
+    try {
+      if (socket.data.kind !== "manager") {
+        return ack({ ok: false, error: "FORBIDDEN" });
+      }
+      const allowed = await canAccessRoom(roomId, socket.data);
+      if (!allowed) return ack({ ok: false, error: "FORBIDDEN" });
+
+      const msg = await prisma.message.findUnique({
+        where: { id: messageId },
+        select: {
+          id: true,
+          roomId: true,
+          senderType: true,
+          senderId: true,
+          deletedAt: true,
+        },
+      });
+      if (!msg || msg.roomId !== roomId)
+        return ack({ ok: false, error: "MESSAGE_NOT_FOUND" });
+      if (msg.deletedAt) return ack({ ok: true }); // 이미 삭제 — idempotent
+      // ADMIN이거나 본인 메시지만 삭제 가능
+      const isOwner =
+        msg.senderType === "MANAGER" && msg.senderId === socket.data.managerId;
+      if (!isOwner && socket.data.role !== "ADMIN")
+        return ack({ ok: false, error: "NOT_OWNER" });
+
+      const deletedAt = new Date();
+      await prisma.message.update({
+        where: { id: messageId },
+        data: {
+          deletedAt,
+          // 본문 마스킹 — 민감 데이터 비움
+          originalText: null,
+          translatedText: null,
+          attachments: null,
+          cardPayload: null,
+        },
+      });
+
+      chatNs.to(roomKey(roomId)).emit("chat:message-deleted", {
+        roomId,
+        messageId,
+        deletedAt: deletedAt.toISOString(),
+      });
+
+      ack({ ok: true });
+    } catch (err) {
+      console.error("[chat:delete] error", err);
+      ack({ ok: false, error: "INTERNAL_ERROR" });
+    }
+  });
+
   socket.on("disconnect", (reason) => {
     console.log(`[socket] disconnect ${label} — ${reason}`);
   });
