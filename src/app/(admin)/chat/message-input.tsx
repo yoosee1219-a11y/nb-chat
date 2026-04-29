@@ -28,9 +28,11 @@ import { CardSenderDialog } from "./card-sender-dialog";
 export function MessageInput({
   roomId,
   applicantLanguageLabel,
+  readOnly = false,
 }: {
   roomId: string;
   applicantLanguageLabel: string;
+  readOnly?: boolean;
 }) {
   const { socket, state } = useChatSocket();
   const [text, setText] = useState("");
@@ -45,7 +47,7 @@ export function MessageInput({
   });
 
   const connected = state === "connected";
-  const disabled = !connected || sending || uploading;
+  const disabled = !connected || sending || uploading || readOnly;
 
   // typing emit — input 변화 시 1회만 true 보내고, 1.5초간 무입력 시 false
   function notifyTyping() {
@@ -148,9 +150,15 @@ export function MessageInput({
   return (
     <div className="border-t bg-background p-3">
       <div className="mb-2 flex items-center gap-2 text-xs">
-        <Badge variant="outline" className="text-[10px]">
-          전송 시 자동번역: 한국어 → {applicantLanguageLabel}
-        </Badge>
+        {readOnly ? (
+          <Badge variant="destructive" className="text-[10px]">
+            VIEWER 권한 — 읽기 전용
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="text-[10px]">
+            전송 시 자동번역: 한국어 → {applicantLanguageLabel}
+          </Badge>
+        )}
         {state === "connecting" && (
           <Badge variant="secondary" className="text-[10px]">
             <Loader2 className="mr-1 h-3 w-3 animate-spin" />

@@ -4,9 +4,11 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
+import { canMutate } from "@/lib/permissions";
 
 export async function toggleFavorite(roomId: string) {
   const session = await requireSession();
+  if (!canMutate(session)) return { ok: false, error: "VIEWER 권한은 즐겨찾기를 변경할 수 없습니다." };
 
   const room = await prisma.chatRoom.findUnique({
     where: { id: roomId },
@@ -55,6 +57,7 @@ export async function markRoomRead(roomId: string) {
 
 export async function assignRoomToMe(roomId: string) {
   const session = await requireSession();
+  if (!canMutate(session)) return { ok: false, error: "VIEWER 권한은 채팅을 담당할 수 없습니다." };
 
   const room = await prisma.chatRoom.findUnique({
     where: { id: roomId },

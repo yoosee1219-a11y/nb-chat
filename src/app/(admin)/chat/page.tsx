@@ -167,7 +167,7 @@ function SelectedRoomView({
   messages,
   hasMoreMessages,
 }: {
-  session: { managerId: string };
+  session: { managerId: string; role: string };
   sidePanelOpen: boolean;
   selectedRoomId: string;
   unreadCount: number;
@@ -280,6 +280,7 @@ function SelectedRoomView({
       <MessageInput
         roomId={selectedRoomId}
         applicantLanguageLabel={lang?.label ?? "신청자 언어"}
+        readOnly={session.role === "VIEWER"}
       />
     </>
   );

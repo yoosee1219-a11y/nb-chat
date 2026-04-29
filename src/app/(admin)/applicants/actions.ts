@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
+import { canMutate } from "@/lib/permissions";
 import { CONSULTATION_STATUS, type ConsultationStatus } from "@/lib/constants";
 
 export async function changeStatus(
@@ -12,6 +13,7 @@ export async function changeStatus(
   reason?: string
 ) {
   const session = await requireSession();
+  if (!canMutate(session)) return { ok: false, error: "VIEWER 권한은 상태를 변경할 수 없습니다." };
 
   if (!(toStatus in CONSULTATION_STATUS)) {
     return { ok: false, error: "유효하지 않은 상태입니다." };
@@ -58,6 +60,7 @@ export async function changeStatus(
 
 export async function createNote(applicantId: string, content: string) {
   const session = await requireSession();
+  if (!canMutate(session)) return { ok: false, error: "VIEWER 권한은 메모를 작성할 수 없습니다." };
   const trimmed = content.trim();
   if (!trimmed) return { ok: false, error: "메모 내용을 입력해주세요." };
 
@@ -82,6 +85,7 @@ export async function createNote(applicantId: string, content: string) {
 
 export async function updateNote(noteId: string, content: string) {
   const session = await requireSession();
+  if (!canMutate(session)) return { ok: false, error: "VIEWER 권한은 메모를 수정할 수 없습니다." };
   const trimmed = content.trim();
   if (!trimmed) return { ok: false, error: "메모 내용을 입력해주세요." };
 
@@ -111,6 +115,7 @@ export async function updateNote(noteId: string, content: string) {
 
 export async function deleteNote(noteId: string) {
   const session = await requireSession();
+  if (!canMutate(session)) return { ok: false, error: "VIEWER 권한은 메모를 삭제할 수 없습니다." };
 
   const note = await prisma.note.findUnique({ where: { id: noteId } });
   if (!note) return { ok: false, error: "메모를 찾을 수 없습니다." };

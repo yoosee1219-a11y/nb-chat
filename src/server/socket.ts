@@ -140,7 +140,7 @@ async function canAccessRoom(
   if (data.kind === "applicant") {
     return data.roomId === roomId; // 룸-바운드
   }
-  // manager
+  // manager — VIEWER도 read는 가능 (담당/미배정 룸)
   if (data.role === "ADMIN") return true;
   const room = await prisma.chatRoom.findUnique({
     where: { id: roomId },
@@ -148,6 +148,15 @@ async function canAccessRoom(
   });
   if (!room) return false;
   return room.managerId === null || room.managerId === data.managerId;
+}
+
+/**
+ * mutation 권한 — VIEWER는 어떤 mutation도 X
+ * (chat:send, chat:edit, chat:delete, chat:typing 외 모든 쓰기 작업)
+ */
+function canMutate(data: SocketData): boolean {
+  if (data.kind === "applicant") return true; // 신청자는 본인 룸 mutation OK
+  return data.role === "ADMIN" || data.role === "MANAGER";
 }
 
 // ─── 챗봇 트리거 ─────────────────────────────────────────────────
@@ -160,11 +169,19 @@ async function maybeRunChatbot(input: {
   applicantMessage: string;
   applicantLanguage: string;
 }) {
-  // 메시지 수 1 (방금 저장된 신청자 첫 메시지 1건)
-  const msgCount = await prisma.message.count({
-    where: { roomId: input.roomId },
-  });
-  if (msgCount > 1) return;
+  // 트리거 조건 (Phase 5.10):
+  //  - 신청자 메시지 정확히 1건 (방금 저장된 첫 메시지)
+  //  - 매니저 메시지 0건 (사람 매니저가 합류 전)
+  // SYSTEM 환영 메시지는 카운트에서 제외
+  const [applicantCount, managerCount] = await Promise.all([
+    prisma.message.count({
+      where: { roomId: input.roomId, senderType: "APPLICANT" },
+    }),
+    prisma.message.count({
+      where: { roomId: input.roomId, senderType: "MANAGER" },
+    }),
+  ]);
+  if (applicantCount !== 1 || managerCount > 0) return;
 
   const flow = await prisma.chatbotFlow.findFirst({
     where: { status: "PUBLISHED" },
@@ -320,6 +337,10 @@ chatNs.on("connection", (socket) => {
 
   socket.on("chat:send", async (input: SendMessageInput, ack) => {
     try {
+      // VIEWER 등 read-only 역할 차단
+      if (!canMutate(socket.data)) {
+        return ack({ ok: false, error: "READ_ONLY" });
+      }
       const allowedTypes = new Set(["TEXT", "IMAGE", "FILE", "CARD"]);
       if (!allowedTypes.has(input.type)) {
         return ack({ ok: false, error: "INVALID_TYPE" });
@@ -597,6 +618,9 @@ chatNs.on("connection", (socket) => {
       if (socket.data.kind !== "manager") {
         return ack({ ok: false, error: "FORBIDDEN" });
       }
+      if (!canMutate(socket.data)) {
+        return ack({ ok: false, error: "READ_ONLY" });
+      }
       const text = originalText?.trim() ?? "";
       if (!text) return ack({ ok: false, error: "EMPTY_TEXT" });
       if (text.length > 4000) return ack({ ok: false, error: "TOO_LONG" });
@@ -668,6 +692,9 @@ chatNs.on("connection", (socket) => {
     try {
       if (socket.data.kind !== "manager") {
         return ack({ ok: false, error: "FORBIDDEN" });
+      }
+      if (!canMutate(socket.data)) {
+        return ack({ ok: false, error: "READ_ONLY" });
       }
       const allowed = await canAccessRoom(roomId, socket.data);
       if (!allowed) return ack({ ok: false, error: "FORBIDDEN" });

@@ -6,6 +6,7 @@ import type { Edge, Node } from "@xyflow/react";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
+import { canMutate } from "@/lib/permissions";
 import {
   executeFlow,
   type ApplicantContext,
@@ -18,6 +19,7 @@ export type FlowStatus = (typeof VALID_STATUS)[number];
 
 export async function createFlow(input: { name: string; description?: string }) {
   const session = await requireSession();
+  if (!canMutate(session)) return { ok: false, error: "VIEWER 권한은 챗봇 플로우를 추가할 수 없습니다." };
   const name = input.name.trim();
   if (!name) return { ok: false, error: "이름을 입력해주세요." };
 
@@ -46,6 +48,7 @@ export async function updateFlowMeta(
   input: { name?: string; description?: string; status?: FlowStatus }
 ) {
   const session = await requireSession();
+  if (!canMutate(session)) return { ok: false, error: "VIEWER 권한은 챗봇 플로우를 수정할 수 없습니다." };
 
   if (input.status && !VALID_STATUS.includes(input.status)) {
     return { ok: false, error: "유효하지 않은 상태입니다." };
@@ -82,6 +85,7 @@ export async function saveFlowGraph(
   graph: { nodes: unknown[]; edges: unknown[] }
 ) {
   const session = await requireSession();
+  if (!canMutate(session)) return { ok: false, error: "VIEWER 권한은 챗봇 플로우를 저장할 수 없습니다." };
 
   const exists = await prisma.chatbotFlow.findUnique({
     where: { id },
@@ -112,6 +116,7 @@ export async function saveFlowGraph(
 
 export async function deleteFlow(id: string) {
   const session = await requireSession();
+  if (!canMutate(session)) return { ok: false, error: "VIEWER 권한은 챗봇 플로우를 삭제할 수 없습니다." };
 
   const exists = await prisma.chatbotFlow.findUnique({
     where: { id },

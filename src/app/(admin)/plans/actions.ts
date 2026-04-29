@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
+import { canMutate } from "@/lib/permissions";
 import { CARRIER, type Carrier } from "@/lib/constants";
 
 export type PlanInput = {
@@ -28,6 +29,7 @@ function validate(input: PlanInput) {
 
 export async function createPlan(input: PlanInput) {
   const session = await requireSession();
+  if (!canMutate(session)) return { ok: false, error: "VIEWER 권한은 요금제를 추가할 수 없습니다." };
   const err = validate(input);
   if (err) return { ok: false, error: err };
 
@@ -58,6 +60,7 @@ export async function createPlan(input: PlanInput) {
 
 export async function updatePlan(id: string, input: PlanInput) {
   const session = await requireSession();
+  if (!canMutate(session)) return { ok: false, error: "VIEWER 권한은 요금제를 수정할 수 없습니다." };
   const err = validate(input);
   if (err) return { ok: false, error: err };
 
@@ -92,6 +95,7 @@ export async function updatePlan(id: string, input: PlanInput) {
 
 export async function deletePlan(id: string) {
   const session = await requireSession();
+  if (!canMutate(session)) return { ok: false, error: "VIEWER 권한은 요금제를 삭제할 수 없습니다." };
 
   const exists = await prisma.plan.findUnique({
     where: { id },

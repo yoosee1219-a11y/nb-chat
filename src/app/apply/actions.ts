@@ -7,6 +7,7 @@ import {
   verifySourceCookie,
   type SourcePayload,
 } from "@/lib/source-cookie";
+import { translateForPeer } from "@/lib/translation";
 
 export type ApplyInput = {
   name: string;
@@ -83,6 +84,22 @@ export async function submitApplication(input: ApplyInput) {
     if (plan && plan.isActive) appliedPlanId = plan.id;
   }
 
+  // 자동 환영 메시지 — 가입 완료 즉시 채팅방에 표시 (빈 화면 방지)
+  const welcomeKo = `${name}님, 환영합니다! 외국인 통신사 가입 상담을 도와드립니다. 궁금한 점을 한국어 또는 모국어로 자유롭게 입력해주세요. 자동으로 번역되어 상담사에게 전달됩니다.`;
+  // 신청자 언어로 미리 번역 — 트랜잭션 밖에서 (장시간 외부 API 호출 안전)
+  let welcomeTranslated: string | null = null;
+  try {
+    const r = await translateForPeer(
+      welcomeKo,
+      "KO_KR",
+      input.preferredLanguage
+    );
+    welcomeTranslated = r.translatedText;
+  } catch (e) {
+    console.error("[apply] welcome translate 실패", e);
+    // 번역 실패해도 가입은 진행 — 원본만 저장
+  }
+
   const result = await prisma.$transaction(async (tx) => {
     const applicant = await tx.applicant.create({
       data: {
@@ -118,6 +135,21 @@ export async function submitApplication(input: ApplyInput) {
     const room = await tx.chatRoom.create({
       data: {
         applicantId: applicant.id,
+        // 첫 메시지로 인해 lastMessageAt 즉시 set
+        lastMessageAt: new Date(),
+      },
+    });
+    // 자동 환영 시스템 메시지 — Phase 5.10
+    await tx.message.create({
+      data: {
+        roomId: room.id,
+        senderType: "SYSTEM",
+        senderId: null,
+        type: "TEXT",
+        originalText: welcomeKo,
+        language: "KO_KR",
+        translatedText: welcomeTranslated,
+        isRead: false,
       },
     });
     return { applicant, room };

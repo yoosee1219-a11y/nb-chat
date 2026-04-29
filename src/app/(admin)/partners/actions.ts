@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import { requireSession } from "@/lib/auth";
 import { audit } from "@/lib/audit";
+import { canMutate } from "@/lib/permissions";
 
 export type PartnerInput = {
   code: string;
@@ -60,6 +61,7 @@ export async function suggestPartnerCode(): Promise<string> {
 
 export async function createPartner(input: PartnerInput) {
   const session = await requireSession();
+  if (!canMutate(session)) return { ok: false, error: "VIEWER 권한은 거래처를 추가할 수 없습니다." };
   const err = validate(input);
   if (err) return { ok: false, error: err };
 
@@ -95,6 +97,7 @@ export async function createPartner(input: PartnerInput) {
 
 export async function updatePartner(id: string, input: PartnerInput) {
   const session = await requireSession();
+  if (!canMutate(session)) return { ok: false, error: "VIEWER 권한은 거래처를 수정할 수 없습니다." };
 
   const exists = await prisma.partner.findUnique({ where: { id } });
   if (!exists) return { ok: false, error: "거래처를 찾을 수 없습니다." };
@@ -145,6 +148,7 @@ export async function updatePartner(id: string, input: PartnerInput) {
 
 export async function deletePartner(id: string) {
   const session = await requireSession();
+  if (!canMutate(session)) return { ok: false, error: "VIEWER 권한은 거래처를 삭제할 수 없습니다." };
 
   const exists = await prisma.partner.findUnique({ where: { id } });
   if (!exists) return { ok: false, error: "거래처를 찾을 수 없습니다." };

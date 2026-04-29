@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 /**
  * 보안 헤더 베이스라인
@@ -78,4 +79,22 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Sentry 통합 — DSN 미설정 시 no-op (안전)
+const sentryEnabled = !!process.env.SENTRY_DSN;
+
+export default sentryEnabled
+  ? withSentryConfig(nextConfig, {
+      // SENTRY_ORG/SENTRY_PROJECT 미설정 시 source map 업로드 자동 skip
+      org: process.env.SENTRY_ORG,
+      project: process.env.SENTRY_PROJECT,
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+      silent: true,
+      // 광고 클릭 트래픽이 워낙 많을 거라 source map 업로드는 끄는 게 안전
+      sourcemaps: {
+        disable: !process.env.SENTRY_AUTH_TOKEN,
+      },
+      // 광고 도메인 ad blocker 우회 — sentry tunnel
+      tunnelRoute: "/monitoring",
+      disableLogger: true,
+    })
+  : nextConfig;
