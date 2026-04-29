@@ -36,7 +36,9 @@ import {
 import type { Edge, Node } from "@xyflow/react";
 import type { AnyNodeData } from "../app/(admin)/chatbot-flow/[id]/node-types";
 
-const PORT = Number(process.env.SOCKET_PORT ?? 4001);
+// Railway/Heroku/Render 등은 PORT 환경변수를 자동 주입.
+// 로컬 dev는 SOCKET_PORT=4001 (.env). 둘 다 지원.
+const PORT = Number(process.env.PORT ?? process.env.SOCKET_PORT ?? 4001);
 const ALLOWED_ORIGINS = (
   process.env.SOCKET_ALLOWED_ORIGINS ?? "http://localhost:3000"
 ).split(",");
