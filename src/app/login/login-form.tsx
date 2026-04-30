@@ -26,14 +26,15 @@ export function LoginForm() {
       <input type="hidden" name="from" value={from} />
 
       <div className="space-y-2">
-        <Label htmlFor="email">이메일</Label>
+        <Label htmlFor="email">아이디</Label>
         <Input
           id="email"
           name="email"
-          type="email"
-          autoComplete="email"
+          type="text"
+          autoComplete="username"
           required
-          defaultValue="admin@fics.local"
+          defaultValue="admin"
+          placeholder="admin"
         />
       </div>
 

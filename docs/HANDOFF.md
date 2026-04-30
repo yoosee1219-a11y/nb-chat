@@ -24,34 +24,17 @@
 
 ## 🔴 다시 PC 켜면 즉시 진행할 작업
 
-### 1. prod 매니저 계정 확보 (#49 미완)
-**현황**: prod Turso에 매니저 3명 존재하지만 `admin@fics.local / admin123` 로그인 X.
-사용자가 이전에 만든 매니저인 것으로 추정 (이메일/비밀번호 모름).
+### 1. prod 매니저 계정 재설정 (#49 — 2026-04-30 진행)
+**현황 (이전)**: prod Turso에 매니저 3명 존재하지만 비밀번호 분실.
+**해결**: 기존 매니저 3명 비활성화 + 신규 `admin`/`user` 2명 (아이디 형식).
 
-**다음 작업**:
-1. Turso 대시보드 → `nb-chat-yoosee1219-a11y` DB → **SQL Console**
-2. 다음 SQL로 매니저 목록 확인:
-   ```sql
-   SELECT id, email, role, isActive FROM managers;
-   ```
-3. 결과 보고 → 비밀번호 reset 또는 새 ADMIN 추가 결정
+**실행**: Turso 대시보드 → `nb-chat-yoosee1219-a11y` DB → SQL Console에 `scripts/reset-prod-managers.sql` 통째로 붙여넣기.
 
-**비밀번호 모를 때 새 ADMIN 추가용 SQL** (Turso SQL Console에서 실행):
-```sql
--- bcryptjs로 미리 해시한 'qa-temp-2026' (재작업 시 새 hash 생성 필요)
-INSERT INTO managers (id, email, name, passwordHash, role, isActive, createdAt, updatedAt)
-VALUES (
-  'qa-admin-' || strftime('%s','now'),
-  'qa-admin@fics.local',
-  'QA 관리자',
-  '$2b$10$REPLACE_WITH_FRESH_HASH',
-  'ADMIN',
-  1,
-  datetime('now'),
-  datetime('now')
-);
-```
-**주의**: hash 값 `$2b$10$...` 부분은 작업 전 `node -e "import('bcryptjs').then(b=>b.hash('qa-temp-2026',10).then(console.log))"` 로 새로 생성.
+새 계정:
+- `admin` / `admin1234` (ADMIN)
+- `user`  / `user1234`  (MANAGER)
+
+**보안 주의**: 첫 로그인 후 `/managers`에서 즉시 비밀번호 변경.
 
 ### 2. 부하 개선 (선택, 광고 라이브 후 천천히)
 - p95 1.4초 → 800ms 미만 목표

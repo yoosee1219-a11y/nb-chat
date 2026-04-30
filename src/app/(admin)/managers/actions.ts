@@ -27,7 +27,7 @@ export async function createManager(input: ManagerInput) {
   const session = await requireAdmin();
 
   if (!input.email.trim() || !input.name.trim()) {
-    return { ok: false, error: "이메일과 이름은 필수입니다." };
+    return { ok: false, error: "아이디와 이름은 필수입니다." };
   }
   if (!input.password || input.password.length < 8) {
     return { ok: false, error: "비밀번호는 최소 8자 이상이어야 합니다." };
@@ -39,7 +39,7 @@ export async function createManager(input: ManagerInput) {
   const exists = await prisma.manager.findUnique({
     where: { email: input.email.trim() },
   });
-  if (exists) return { ok: false, error: "이미 등록된 이메일입니다." };
+  if (exists) return { ok: false, error: "이미 등록된 아이디입니다." };
 
   const passwordHash = await bcrypt.hash(input.password, 10);
 
@@ -71,7 +71,7 @@ export async function updateManager(
   const session = await requireAdmin();
 
   if (!input.email.trim() || !input.name.trim()) {
-    return { ok: false, error: "이메일과 이름은 필수입니다." };
+    return { ok: false, error: "아이디와 이름은 필수입니다." };
   }
   if (input.password && input.password.length > 0 && input.password.length < 8) {
     return { ok: false, error: "비밀번호는 최소 8자 이상이어야 합니다." };

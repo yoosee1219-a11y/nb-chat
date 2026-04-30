@@ -15,7 +15,7 @@ export async function loginAction(
   const from = String(formData.get("from") ?? "/dashboard");
 
   if (!email || !password) {
-    return { ok: false, error: "이메일과 비밀번호를 입력해주세요." };
+    return { ok: false, error: "아이디와 비밀번호를 입력해주세요." };
   }
 
   const headersList = await headers();
@@ -28,7 +28,7 @@ export async function loginAction(
   });
 
   if (!session) {
-    return { ok: false, error: "이메일 또는 비밀번호가 일치하지 않습니다." };
+    return { ok: false, error: "아이디 또는 비밀번호가 일치하지 않습니다." };
   }
 
   redirect(from);

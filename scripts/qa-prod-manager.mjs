@@ -2,7 +2,7 @@
  * Prod QA — 매니저 로그인 → 채팅 응답
  *
  * 시나리오:
- *   1. /login 접속 → admin@fics.local / admin123 시도
+ *   1. /login 접속 → admin / admin1234 시도
  *   2. /chat 진입 (로그인 후 redirect 또는 직접)
  *   3. 가장 최근 룸 선택 → 메시지 발신
  *   4. 자동번역 결과 확인
@@ -10,8 +10,8 @@
 import puppeteer from "puppeteer-core";
 
 const BASE_URL = process.argv[2] || process.env.BASE_URL || "https://nb-chat-pi.vercel.app";
-const SEED_EMAIL = "admin@fics.local";
-const SEED_PASSWORD = "admin123";
+const SEED_EMAIL = process.env.SEED_EMAIL || "admin";
+const SEED_PASSWORD = process.env.SEED_PASSWORD || "admin1234";
 
 console.log(`▶ Target: ${BASE_URL} (시드 매니저: ${SEED_EMAIL})`);
 
@@ -35,13 +35,13 @@ try {
   // ───── 1. 로그인 ─────
   total++;
   await page.goto(`${BASE_URL}/login`, { waitUntil: "networkidle0" });
-  // email/password input 찾기
+  // 아이디/비밀번호 input 찾기 — 아이디는 type=text + name=email
   const inputs = await page.$$('input');
   let emailInput, pwInput;
   for (const inp of inputs) {
-    const type = await inp.evaluate((el) => el.type);
-    if (type === "email") emailInput = inp;
-    else if (type === "password") pwInput = inp;
+    const props = await inp.evaluate((el) => ({ type: el.type, name: el.name }));
+    if (!emailInput && (props.name === "email" || props.type === "email" || props.type === "text")) emailInput = inp;
+    else if (props.type === "password") pwInput = inp;
   }
   if (!emailInput || !pwInput) {
     console.log("✗ [1] 로그인 폼 못 찾음");

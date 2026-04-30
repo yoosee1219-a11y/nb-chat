@@ -20,7 +20,7 @@ datasource db {
 // ============================================
 model Manager {
   id           String    @id @default(cuid())
-  email        String    @unique
+  email        String    @unique // 로그인 아이디 (이메일/유저네임 모두 허용 — UI 라벨은 "아이디")
   name         String
   passwordHash String
   role         String    @default("MANAGER")

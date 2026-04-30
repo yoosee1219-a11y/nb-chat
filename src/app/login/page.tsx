@@ -28,9 +28,9 @@ export default async function LoginPage() {
           </Suspense>
           <p className="mt-6 text-center text-xs text-muted-foreground">
             개발 시드 계정:{" "}
-            <code className="rounded bg-muted px-1 py-0.5">admin@fics.local</code>{" "}
+            <code className="rounded bg-muted px-1 py-0.5">admin</code>{" "}
             /{" "}
-            <code className="rounded bg-muted px-1 py-0.5">admin123</code>
+            <code className="rounded bg-muted px-1 py-0.5">admin1234</code>
           </p>
         </CardContent>
       </Card>

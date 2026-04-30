@@ -32,16 +32,16 @@ async function main() {
   console.log("🌱 시드 시작...");
 
   // ========================================
-  // 매니저 (관리자 + 일반 매니저 2명)
+  // 매니저 (어드민 1 + 일반 1) — 아이디 형식 (이메일 X)
   // ========================================
-  const adminPasswordHash = await bcrypt.hash("admin123", 10);
-  const managerPasswordHash = await bcrypt.hash("manager123", 10);
+  const adminPasswordHash = await bcrypt.hash("admin1234", 10);
+  const userPasswordHash = await bcrypt.hash("user1234", 10);
 
   const admin = await prisma.manager.upsert({
-    where: { email: "admin@fics.local" },
-    update: {},
+    where: { email: "admin" },
+    update: { passwordHash: adminPasswordHash, role: "ADMIN", isActive: true },
     create: {
-      email: "admin@fics.local",
+      email: "admin",
       name: "관리자",
       passwordHash: adminPasswordHash,
       role: "ADMIN",
@@ -49,28 +49,17 @@ async function main() {
   });
 
   const m1 = await prisma.manager.upsert({
-    where: { email: "manager1@fics.local" },
-    update: {},
+    where: { email: "user" },
+    update: { passwordHash: userPasswordHash, role: "MANAGER", isActive: true },
     create: {
-      email: "manager1@fics.local",
-      name: "김매니저",
-      passwordHash: managerPasswordHash,
+      email: "user",
+      name: "일반매니저",
+      passwordHash: userPasswordHash,
       role: "MANAGER",
     },
   });
 
-  await prisma.manager.upsert({
-    where: { email: "manager2@fics.local" },
-    update: {},
-    create: {
-      email: "manager2@fics.local",
-      name: "이매니저",
-      passwordHash: managerPasswordHash,
-      role: "MANAGER",
-    },
-  });
-
-  console.log("  ✓ 매니저 3명 생성");
+  console.log("  ✓ 매니저 2명 (admin/admin1234, user/user1234)");
 
   // ========================================
   // 요금제 (LGU+ 4종)
@@ -714,9 +703,8 @@ async function main() {
   console.log("");
   console.log("✅ 시드 완료\n");
   console.log("로그인 계정:");
-  console.log("  - admin@fics.local / admin123 (ADMIN)");
-  console.log("  - manager1@fics.local / manager123 (MANAGER)");
-  console.log("  - manager2@fics.local / manager123 (MANAGER)");
+  console.log("  - admin / admin1234 (ADMIN)");
+  console.log("  - user  / user1234  (MANAGER)");
 }
 
 main()

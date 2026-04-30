@@ -160,8 +160,8 @@ async function main() {
  * prod 환경의 chicken-and-egg 해결 — 회원가입 페이지가 없어서 첫 ADMIN은 시드로만.
  *
  * 환경변수:
- *   SEED_ADMIN_EMAIL    (기본: admin@fics.local)
- *   SEED_ADMIN_PASSWORD (기본: admin123)
+ *   SEED_ADMIN_EMAIL    (기본: admin) — 아이디 형식 자유 (이메일/유저네임 모두 OK)
+ *   SEED_ADMIN_PASSWORD (기본: admin1234)
  *
  * 보안 주의:
  *  - 첫 로그인 후 즉시 비밀번호 변경 권장
@@ -174,8 +174,8 @@ async function ensureFirstAdmin() {
     console.log(`▶ 매니저 이미 ${count}명 존재 — 시드 skip`);
     return;
   }
-  const email = process.env.SEED_ADMIN_EMAIL?.trim() || "admin@fics.local";
-  const password = process.env.SEED_ADMIN_PASSWORD?.trim() || "admin123";
+  const email = process.env.SEED_ADMIN_EMAIL?.trim() || "admin";
+  const password = process.env.SEED_ADMIN_PASSWORD?.trim() || "admin1234";
 
   // bcryptjs로 해시 — package.json dependency에 이미 있음
   const bcrypt = await import("bcryptjs");
@@ -187,7 +187,7 @@ async function ensureFirstAdmin() {
           VALUES (?, ?, ?, ?, 'ADMIN', 1, datetime('now'), datetime('now'))`,
     args: [id, email, "관리자", passwordHash],
   });
-  console.log(`✓ 첫 ADMIN 매니저 생성: ${email} (비밀번호: ${password === "admin123" ? "admin123 — 즉시 변경 권장" : "ENV 값"})`);
+  console.log(`✓ 첫 ADMIN 매니저 생성: ${email} (비밀번호: ${password === "admin1234" ? "admin1234 — 즉시 변경 권장" : "ENV 값"})`);
 }
 
 main()

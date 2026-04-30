@@ -28,13 +28,12 @@ npm run dev              # http://localhost:3000  (Next dev)
 npm run dev:socket       # http://localhost:4001  (Socket.IO)
 ```
 
-### 시드 계정
+### 시드 계정 (아이디 형식 — 이메일 형식 X)
 
-| 이메일 | 비밀번호 | 권한 |
+| 아이디 | 비밀번호 | 권한 |
 |---|---|---|
-| `admin@fics.local` | `admin123` | ADMIN |
-| `manager1@fics.local` | `manager123` | MANAGER |
-| `manager2@fics.local` | `manager123` | MANAGER |
+| `admin` | `admin1234` | ADMIN |
+| `user`  | `user1234`  | MANAGER |
 
 ## 디렉터리
 

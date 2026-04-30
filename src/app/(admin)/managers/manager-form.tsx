@@ -92,14 +92,15 @@ export function ManagerForm({ existing }: { existing?: ExistingManager }) {
 
         <div className="space-y-3">
           <div className="space-y-1">
-            <Label htmlFor="email">이메일 *</Label>
+            <Label htmlFor="email">아이디 *</Label>
             <Input
               id="email"
-              type="email"
+              type="text"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
               disabled={isEdit}
-              placeholder="manager@fics.local"
+              placeholder="예: admin, user1, manager_kim"
+              autoComplete="username"
             />
           </div>
 
