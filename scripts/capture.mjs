@@ -39,8 +39,8 @@ async function findEdge() {
 async function login(page) {
   await page.goto(`${BASE}/login`, { waitUntil: "networkidle0" });
   await page.click("#email", { count: 3 });
-  await page.type("#email", "manager1@fics.local");
-  await page.type("#password", "manager123");
+  await page.type("#email", "user");
+  await page.type("#password", "user1234");
   await Promise.all([
     page.waitForNavigation({ waitUntil: "networkidle0", timeout: 10_000 }),
     page.click("button[type=submit]"),

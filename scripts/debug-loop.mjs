@@ -57,8 +57,8 @@ try {
   // 로그인
   await p.goto("http://localhost:3000/login", { waitUntil: "networkidle0" });
   await p.click("#email", { count: 3 });
-  await p.type("#email", "manager1@fics.local");
-  await p.type("#password", "manager123");
+  await p.type("#email", "user");
+  await p.type("#password", "user1234");
   await Promise.all([
     p.waitForNavigation({ waitUntil: "networkidle0", timeout: 10_000 }),
     p.click("button[type=submit]"),
