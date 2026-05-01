@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { LogOut } from "lucide-react";
-import { getSession, logout } from "@/lib/auth";
+import { getSession, logout, signSocketToken } from "@/lib/auth";
+import { SocketTokenProvider } from "@/lib/socket-token-context";
 import {
   Sidebar,
   SidebarContent,
@@ -29,6 +30,9 @@ export default async function AdminLayout({
   const session = await getSession();
   if (!session) redirect("/login");
 
+  // cross-origin (Vercel ↔ Railway) 환경에서 socket auth용 단기 토큰 발급
+  const socketToken = await signSocketToken(session);
+
   const initials = session.name
     .split(" ")
     .map((s) => s[0])
@@ -37,6 +41,7 @@ export default async function AdminLayout({
     .toUpperCase();
 
   return (
+    <SocketTokenProvider token={socketToken}>
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader className="border-b border-sidebar-border px-4 py-4">
@@ -95,5 +100,6 @@ export default async function AdminLayout({
       </SidebarInset>
       <GlobalNotifications />
     </SidebarProvider>
+    </SocketTokenProvider>
   );
 }

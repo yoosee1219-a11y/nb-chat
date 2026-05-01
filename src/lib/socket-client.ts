@@ -12,9 +12,9 @@ export type ChatSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 /**
  * 브라우저 Socket.IO 클라이언트 싱글톤.
  *
- * 인증: same-site 쿠키 자동 전송 (withCredentials: true).
- *  - dev: localhost:3000 ↔ localhost:4001 (same-site, different-origin)
- *  - prod: 같은 도메인 권장. cross-site 가게 되면 별도 토큰 엔드포인트로 교체.
+ * 인증:
+ *  - 1차: handshake.auth.token (cross-site 환경에서 필수 — Vercel ↔ Railway)
+ *  - 2차: same-site 쿠키 (withCredentials: true) — dev/same-domain prod 폴백
  *
  * 확장:
  *  - URL은 NEXT_PUBLIC_SOCKET_URL 환경변수로 주입 (배포 환경 분리)
@@ -24,10 +24,14 @@ export type ChatSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 let cached: ChatSocket | null = null;
 
 /**
- * 매니저용 소켓 (same-site 쿠키 인증).
+ * 매니저용 소켓 (token-in-handshake + 쿠키 폴백).
  * 싱글톤 — 어드민 SPA 내에서 한 번만 연결.
+ *
+ * @param token  서버 컴포넌트(layout)에서 발급한 매니저 단기 JWT.
+ *               cross-origin (Vercel ↔ Railway)에서 SameSite=Strict 쿠키가
+ *               전송 안 되므로 필수. dev/same-origin엔 미전달 시 쿠키로 폴백.
  */
-export function getChatSocket(): ChatSocket {
+export function getChatSocket(token?: string | null): ChatSocket {
   if (cached) return cached;
 
   const baseUrl =
@@ -35,6 +39,7 @@ export function getChatSocket(): ChatSocket {
 
   cached = io(`${baseUrl}${CHAT_NAMESPACE}`, {
     withCredentials: true,
+    auth: token ? { token } : undefined,
     transports: ["websocket", "polling"],
     reconnection: true,
     reconnectionAttempts: Infinity,

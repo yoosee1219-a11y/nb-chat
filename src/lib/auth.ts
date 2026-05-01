@@ -171,6 +171,25 @@ export async function verifySessionToken(
 
 export const SESSION_COOKIE_NAME = COOKIE_NAME;
 
+/**
+ * 매니저 socket 단기 토큰 (cross-origin handshake 용).
+ * 24h — 페이지 로드마다 layout에서 새로 발급되므로 사실상 세션 길이만큼만 유효.
+ *
+ * cross-site cookie(SameSite=Strict)가 Railway socket 도메인으로 안 가서
+ * 토큰을 명시적으로 auth.token에 박아 보낸다.
+ */
+const SOCKET_TOKEN_TTL = 60 * 60 * 24; // 24h
+
+export async function signSocketToken(
+  session: SessionPayload
+): Promise<string> {
+  return new SignJWT({ ...session, kind: "manager" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${SOCKET_TOKEN_TTL}s`)
+    .sign(getSecret());
+}
+
 // ─── 신청자 룸 토큰 (Phase 4.4) ────────────────────────────────────
 // 고객 URL `/c/[roomId]` 진입 시 서버 컴포넌트에서 발급.
 // 소켓 핸드셰이크에서 검증. 룸-바운드 — 다른 룸 접근 불가.

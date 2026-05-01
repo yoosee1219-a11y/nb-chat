@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Bell, MessageCircle } from "lucide-react";
 import { getChatSocket } from "@/lib/socket-client";
+import { useSocketToken } from "@/lib/socket-token-context";
 import type { ChatMessageEvent } from "@/lib/socket-types";
 
 /**
@@ -21,10 +22,11 @@ import type { ChatMessageEvent } from "@/lib/socket-types";
  */
 export function GlobalNotifications() {
   const router = useRouter();
+  const token = useSocketToken();
   const permissionRequested = useRef(false);
 
   useEffect(() => {
-    const socket = getChatSocket();
+    const socket = getChatSocket(token);
 
     // 알림 권한 요청 — 사용자 첫 클릭 시 1회
     function requestPermissionOnce() {
@@ -82,7 +84,7 @@ export function GlobalNotifications() {
       socket.off("chat:message", handleMessage);
       window.removeEventListener("click", requestPermissionOnce);
     };
-  }, [router]);
+  }, [router, token]);
 
   return null;
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getChatSocket, type ChatSocket } from "@/lib/socket-client";
+import { useSocketToken } from "@/lib/socket-token-context";
 
 export type ConnectionState = "connecting" | "connected" | "disconnected" | "error";
 
@@ -13,7 +14,8 @@ export type ConnectionState = "connecting" | "connected" | "disconnected" | "err
  */
 export function useChatSocket() {
   const [state, setState] = useState<ConnectionState>("connecting");
-  const [socket] = useState<ChatSocket>(() => getChatSocket());
+  const token = useSocketToken();
+  const [socket] = useState<ChatSocket>(() => getChatSocket(token));
 
   useEffect(() => {
     const onConnect = () => setState("connected");
