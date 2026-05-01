@@ -35,43 +35,52 @@ try {
   // ───── 1. 로그인 ─────
   total++;
   await page.goto(`${BASE_URL}/login`, { waitUntil: "networkidle0" });
-  // 아이디/비밀번호 input 찾기 — 아이디는 type=text + name=email
-  const inputs = await page.$$('input');
-  let emailInput, pwInput;
-  for (const inp of inputs) {
-    const props = await inp.evaluate((el) => ({ type: el.type, name: el.name }));
-    if (!emailInput && (props.name === "email" || props.type === "email" || props.type === "text")) emailInput = inp;
-    else if (props.type === "password") pwInput = inp;
-  }
-  if (!emailInput || !pwInput) {
-    console.log("✗ [1] 로그인 폼 못 찾음");
-  } else {
-    await emailInput.type(SEED_EMAIL);
-    await pwInput.type(SEED_PASSWORD);
+  // hydration 완료 대기 (Server Action 폼은 React 클라이언트 핸들러 필요)
+  await page.waitForSelector("#email", { timeout: 10_000 });
+  await page.waitForSelector("#password", { timeout: 10_000 });
+  await new Promise((r) => setTimeout(r, 800));
 
-    const clicked = await page.evaluate(() => {
-      const btns = Array.from(document.querySelectorAll("button"));
-      const btn = btns.find((b) => b.type === "submit" || b.textContent?.includes("로그인"));
-      btn?.click();
-      return btn?.textContent?.trim();
-    });
+  // 폼 직접 채우기 (id 셀렉터)
+  await page.$eval("#email", (el, v) => { el.value = ""; }, "");
+  await page.$eval("#password", (el, v) => { el.value = ""; }, "");
+  await page.type("#email", SEED_EMAIL, { delay: 30 });
+  await page.type("#password", SEED_PASSWORD, { delay: 30 });
 
-    try {
-      await page.waitForFunction(
-        () => location.pathname === "/dashboard" || location.pathname === "/chat",
-        { timeout: 15_000, polling: 500 }
-      );
-      const path = await page.evaluate(() => location.pathname);
-      console.log(`✓ [1] 로그인 성공 (${clicked} → ${path})`);
-      pass++;
-    } catch {
-      const errs = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('[role="alert"], .text-destructive'))
-          .map((e) => e.textContent?.trim()).filter(Boolean).join(" | ")
-      );
-      const path = await page.evaluate(() => location.pathname);
-      console.log(`✗ [1] 로그인 실패 (path=${path}, err=${errs || "none"})`);
+  // submit 버튼 + Enter 둘 다 시도
+  const clicked = await page.evaluate(() => {
+    const form = document.querySelector("form");
+    const btn = form?.querySelector('button[type="submit"], button:not([type])');
+    btn?.click();
+    return btn?.textContent?.trim() ?? null;
+  });
+  // 백업: submit 이벤트 직접 발사
+  await page.evaluate(() => {
+    const form = document.querySelector("form");
+    if (form && location.pathname === "/login") {
+      form.requestSubmit?.();
     }
+  });
+
+  try {
+    await page.waitForFunction(
+      () => location.pathname === "/dashboard" || location.pathname === "/chat",
+      { timeout: 20_000, polling: 500 }
+    );
+    const path = await page.evaluate(() => location.pathname);
+    console.log(`✓ [1] 로그인 성공 (${clicked} → ${path})`);
+    pass++;
+  } catch {
+    const errs = await page.evaluate(() => {
+      const toasts = Array.from(document.querySelectorAll('[role="alert"], [data-sonner-toast], .text-destructive'))
+        .map((e) => e.textContent?.trim()).filter(Boolean);
+      return toasts.join(" | ");
+    });
+    const path = await page.evaluate(() => location.pathname);
+    const formState = await page.evaluate(() => ({
+      emailVal: document.querySelector("#email")?.value,
+      pwLen: document.querySelector("#password")?.value?.length,
+    }));
+    console.log(`✗ [1] 로그인 실패 (path=${path}, err=${errs || "none"}, form=${JSON.stringify(formState)})`);
   }
 
   // ───── 2. /chat 페이지 로드 ─────
