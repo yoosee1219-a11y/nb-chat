@@ -13,14 +13,15 @@ import { jwtVerify } from "jose";
  * Edge runtime이라 Prisma/cookies()는 못 쓰고 jose로만 토큰 검증
  */
 
-const PUBLIC_PATHS = ["/login", "/api/health", "/apply"];
+const PUBLIC_PATHS = ["/login", "/api/health"];
 
 // 정확 prefix 매칭 — 고객(신청자) 경로는 별도 룸-바운드 토큰으로 보호
+//   /apply      : 미니 랜딩 + 신청 폼 (게스트 공개)
 //   /c/         : 채팅 (룸-바운드 토큰)
 //   /r/         : 유입 추적 진입 → /apply 리다이렉트
 //   /api/upload : 자체 인증 (매니저 세션 OR 룸 토큰 Bearer)
 //   /uploads/   : 정적 파일 (URL 알면 누구나 접근 — MVP. 운영 시 signed URL)
-const PUBLIC_PREFIXES = ["/c/", "/r/", "/api/upload", "/uploads/"];
+const PUBLIC_PREFIXES = ["/apply", "/c/", "/r/", "/api/upload", "/uploads/"];
 
 const getSecret = () => {
   const secret = process.env.AUTH_SECRET;
